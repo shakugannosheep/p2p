@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" width="600" height="380" creationComplete="init()" >
+	<s:states>
+		<s:State name="Login"/>
+		<s:State name="Invite"/>
+		<s:State name="Calling"/>
+		<s:State name="Called"/>
+		<s:State name="Talk"/>
+	</s:states>
+	<fx:Declarations>
+		<mx:StringValidator id="_username" source="{username}" property="text" required="true" minLength="6" maxLength="16"
+							requiredFieldError="请输入用户名" tooShortError="用户名长度必须大于6个字符" tooLongError="用户名长度必须小于16个字符"/>
+		<mx:StringValidator id="_password" source="{password}" property="text" required="true" minLength="6" maxLength="20" 
+							requiredFieldError="请输入密码" tooShortError="密码长度必须大于6个字符" tooLongError="密码长度必须小于20个字符"/>
+		<s:RemoteObject id="service"
+						destination="amfphp"
+						source="p2p"
+						fault="service_faultHandler(event)">
+			<s:method name="validate" result="validate_resultHandler(event)" />
+			<s:method name="setUserData" result="setUserData_resultHandler(event)" />
+			<s:method name="getUserData" result="getUserData_resultHandler(event)" />
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.binding.utils.ChangeWatcher;
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.core.UIComponent;
+			import mx.events.FlexEvent;
+			import mx.events.ValidationResultEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			
+			private var validatorObject:Array;
+			private var adobeurl:String = "rtmfp://stratus.adobe.com/1710124cbf69e3f25b780c13-d6cbf2cb35a1";
+			private var netConnection:NetConnection;
+			private var userid:Number;
+			private var localpeerid:String;
+			private var localusername:String;
+			private var remotepeerid:String;
+			
+			[Bindable]
+			private var friendlist:ArrayCollection = new ArrayCollection();
+			
+			private var mystream:NetStream;
+			private var outstream:NetStream;
+			private var instream:NetStream;
+			private var controlstream:NetStream;
+			
+			private var remotevideo:Video;
+			private var localvideo:Video;
+			
+			private function init():void
+			{
+				validatorObject = [username,password];
+			}
+			
+			private function service_faultHandler(event:FaultEvent):void
+			{
+				Alert.show(event.fault.faultDetail);
+				Alert.show(event.fault.faultString);
+				//Alert.show("无法连接到服务器");
+			}
+			
+			private function login():void
+			{
+				//Alert.show("Login Clicked");
+				var validatorResult:Array = Validator.validateAll(validatorObject);
+				if(validatorResult.length == 0)
+				{
+					service.validate.send( username.text, password.text );
+				}
+				else
+				{
+					var validatorEvent:ValidationResultEvent = validatorResult[0] as ValidationResultEvent;
+				}
+			}
+			
+			private function validate_resultHandler(event:ResultEvent):void
+			{
+				var object:Object = event.message.body;
+				var result:Number = object.result.toString();
+				userid = object.userid.toString();
+				//Alert.show(userid.toString());
+				switch(result)
+				{
+					case 0:
+						connect();
+						break;
+					case 1:
+						Alert.show("用户名或密码错误");
+						break;
+					case 2:
+						Alert.show("该用户名不存在");
+						break;
+					case 3:
+						Alert.show("数据库连接错误");
+						break;
+					default:
+						Alert.show("服务器返回值非法");
+						break;
+				}
+			}
+			
+			private function connect():void
+			{
+				netConnection = new NetConnection();
+				netConnection.addEventListener(NetStatusEvent.NET_STATUS,netConnection_statusHandler);
+				netConnection.connect(adobeurl);
+			}
+			
+			private function netConnection_statusHandler(event:NetStatusEvent):void
+			{
+				switch (event.info.code)
+				{
+					//链接成功后的初始化
+					case "NetConnection.Connect.Success":
+						localpeerid = netConnection.nearID;
+						localusername = username.text;
+						service.setUserData.send(userid,localpeerid,1);
+						initMyStream();
+						//Alert.show("Data sended");
+						//Alert.show(netConnection.nearID);
+						break;
+					case "NetStream.Connect.Success":
+//						currentState = "Talk";
+						break;
+					default:
+						//Alert.show(event.info.code);
+						break;
+				}
+			}
+			//初始化mystream和instream，
+			private function initMyStream():void
+			{
+				mystream=new NetStream(netConnection,NetStream.DIRECT_CONNECTIONS);
+				mystream.addEventListener(NetStatusEvent.NET_STATUS,netStreamHandler);
+				mystream.publish(localpeerid);
+				
+				var obj:Object=new Object();
+				obj.onPeerConnect=function(subscriberstream:NetStream):Boolean
+				{
+					instream=new NetStream(netConnection,subscriberstream.farID);
+					instream.addEventListener(NetStatusEvent.NET_STATUS,inStreamHandler);
+					instream.play("caller");
+					
+					instream.receiveAudio(false);
+					instream.receiveVideo(false);
+					
+					var i:Object=new Object();
+					i.onIm=function(name:String,value:String):void
+					{
+						info.text += name + " : " + value + "\n";
+					}
+					i.onIncomingCall=function(name:String):void
+					{
+						currentState = "Called";
+						calledtext.text = name + "正在邀请您，是否接受？";
+					}
+					i.onConnectSuccess=function(name:String):void
+					{
+						Alert.show("与"+name+"连接成功\n");
+						_calling.visible = false;
+						_talk.enabled = true;
+						//info.text+=;
+						//sendmessage.enabled=true;
+						currentState = "Talk";
+						instream.receiveAudio(true);
+						instream.receiveVideo(true);
+						remotevideo=new Video(160,120);
+						remotevideo.attachNetStream(instream);
+						remotevideodisplay.addChild(remotevideo);
+						//						outstream.send("onAcceptInvite");
+						//sendmessage.enabled=true;
+					}
+					i.onHangup=function():void
+					{
+						stopTalk();
+					}
+					instream.client=i;
+					
+					return true;
+				}
+				mystream.client=obj;
+			}
+			
+			private function acceptInvite():void
+			{
+				currentState = "Talk";
+				_calling.visible = false;
+				_talk.enabled = true;
+				outstream = new NetStream(netConnection,NetStream.DIRECT_CONNECTIONS);
+				outstream.addEventListener(NetStatusEvent.NET_STATUS,outAcceptStreamHandler);
+				//outstream.send("onConnectSuccess",localusername);
+				outstream.publish("callee");
+			//	outstream.send("onConnectSuccess",localusername);
+				publishAudio();
+				publishVideo();
+				
+				instream.receiveAudio(true);
+				instream.receiveVideo(true);
+				remotevideo = new Video(160,120);
+				remotevideo.attachNetStream(instream);
+				remotevideodisplay.addChild(remotevideo);
+				
+				//Alert.show("OnConnectSuccess Sended");
+			}
+			
+			private function startInvite():void
+			{
+				if(friend.selectedItem)
+				{
+					currentState = "Talk";
+					remotepeerid = friend.selectedItem.peerid.toString();
+					
+					controlstream = new NetStream(netConnection,remotepeerid);
+					controlstream.addEventListener(NetStatusEvent.NET_STATUS,netStreamHandler);
+					controlstream.play(remotepeerid);
+					
+					outstream = new NetStream(netConnection,NetStream.DIRECT_CONNECTIONS);
+					outstream.addEventListener(NetStatusEvent.NET_STATUS,outInviteStreamHandler);
+					//outstream.send("onIncomingCall",localusername);
+					outstream.publish("caller");
+					
+					publishVideo();
+					publishAudio();
+					
+					instream=new NetStream(netConnection,remotepeerid);
+					instream.addEventListener(NetStatusEvent.NET_STATUS,inStreamHandler);
+					instream.play("callee");
+					
+					//Caller
+//					var i:Object=new Object();
+//					i.onIm=function(name:String,value:String):void
+//					{
+//						info.text += name + " : " + value + "\n";
+//					}
+//					i.onConnectSuccess=function(name:String):void
+//					{
+//						Alert.show("与"+name+"连接成功\n");
+//						_calling.visible = false;
+//						_talk.enabled = true;
+//						//info.text+=;
+//						//sendmessage.enabled=true;
+//						currentState = "Talk";
+//						instream.receiveAudio(true);
+//						instream.receiveVideo(true);
+//						remotevideo=new Video(160,120);
+//						remotevideo.attachNetStream(instream);
+//						remotevideodisplay.addChild(remotevideo);
+////						outstream.send("onAcceptInvite");
+//						//sendmessage.enabled=true;
+//					}
+//					i.onHangup=function():void
+//					{
+//						stopTalk();
+//					}
+//					
+//					instream.client=i;
+					var i:Object=new Object();
+					i.onIm=function(name:String,value:String):void
+					{
+						info.text += name + " : " + value + "\n";
+					}
+					i.onIncomingCall=function(name:String):void
+					{
+						currentState = "Called";
+						calledtext.text = name + "正在邀请您，是否接受？";
+					}
+					i.onConnectSuccess=function(name:String):void
+					{
+						Alert.show("与"+name+"连接成功\n");
+						_calling.visible = false;
+						_talk.enabled = true;
+						//info.text+=;
+						//sendmessage.enabled=true;
+						currentState = "Talk";
+						instream.receiveAudio(true);
+						instream.receiveVideo(true);
+						remotevideo=new Video(160,120);
+						remotevideo.attachNetStream(instream);
+						remotevideodisplay.addChild(remotevideo);
+						//						outstream.send("onAcceptInvite");
+						//sendmessage.enabled=true;
+					}
+					i.onHangup=function():void
+					{
+						stopTalk();
+					}
+					instream.client=i;
+					
+					callingtext.text = "正在邀请"+friend.selectedItem.name.toString()+"，请等待......";
+					_talk.enabled = false;
+				}
+				else
+				{
+					Alert.show("请选择您想要邀请的好友");
+				}
+				//Alert.show(friend.selectedItem);
+			}
+			
+			private function cancelInvite():void
+			{
+				outstream.send("onHangup");
+				stopTalk();
+				//currentState = "Invite";
+			}
+			
+			private function publishAudio():void
+			{
+				var mic:Microphone;
+				mic=Microphone.getMicrophone();
+				if(mic!=null)
+				{
+					outstream.attachAudio(mic);
+				}
+				else
+				{
+					Alert.show("未检测到麦克风");
+				}
+			}
+			
+			private function publishVideo():void
+			{
+				var cam:Camera;
+				cam=Camera.getCamera();
+				if(cam!=null)
+				{
+					outstream.attachCamera(cam);
+					cam.setQuality(0,90);
+				}
+				else
+				{
+					Alert.show("未检测到摄像头");
+				}
+				localvideo=new Video(160,120);
+				localvideo.attachCamera(cam);
+				localvideodisplay.addChild(localvideo);
+			}
+			
+//			private function rejectInvite():void
+//			{
+//				outstream.send("onHangup");
+//				stopTalk();
+//			}
+			
+			private function stopTalk():void
+			{
+				Alert.show("链接已断开");
+				currentState = "Invite";
+				if(instream)
+				{
+					instream.close();
+					instream.removeEventListener(NetStatusEvent.NET_STATUS,inStreamHandler);
+				}
+				if(outstream)
+				{
+					outstream.close();
+					outstream.removeEventListener(NetStatusEvent.NET_STATUS,outInviteStreamHandler);
+				}
+				if(controlstream)
+				{
+					controlstream.close();
+					controlstream.removeEventListener(NetStatusEvent.NET_STATUS,netStreamHandler);
+				}
+				
+				instream=null;
+				outstream=null;
+				controlstream=null;
+				if(localvideo!=null)
+				{
+					localvideo.attachCamera(null);
+				}
+				if(remotevideo!=null)
+				{
+					remotevideo.attachNetStream(null);
+				}
+				localvideodisplay.removeChild(localvideo);
+				remotevideodisplay.removeChild(remotevideo);
+				initMyStream();
+				//info.text+="已挂断\n";
+				//callyou.label="呼叫";
+				//sendmessage.enabled=false;
+			}
+			
+			
+			
+			private function netStreamHandler(event:NetStatusEvent):void
+			{
+				
+			}
+			
+			private function inStreamHandler(event:NetStatusEvent):void
+			{
+				
+			}
+			
+			private function outInviteStreamHandler(event:NetStatusEvent):void
+			{
+				if (event.info.code == "NetStream.Play.Start" )
+				{
+					outstream.send("onIncomingCall",localusername);
+				}
+			}
+
+			private function outAcceptStreamHandler(event:NetStatusEvent):void
+			{
+				//Alert.show(event.info.code);
+				outstream.send("onConnectSuccess",localusername);
+			}
+//			
+			private function setUserData_resultHandler(event:ResultEvent):void
+			{
+				var result:Number = event.message.body.toString();
+				switch(result)
+				{
+					case 0:
+						service.getUserData.send(userid);
+						//Alert.show("登陆成功");
+						currentState = "Invite";
+						break;
+					case 1:
+						Alert.show("服务器更新失败");
+						break;
+					default:
+						Alert.show("服务器返回值非法");
+						break;
+				}
+			}
+			
+			private function getUserData_resultHandler(event:ResultEvent):void
+			{
+				var result:Array = event.message.body as Array;
+				//Alert.show(result[0].username.toString());
+				for(var i:Number = 0; i < result.length; i++)
+				{	
+					friendlist.addItem({name:result[i].username,peerid:result[i].peerid});
+				}
+				//friendlist.addItem(array.pop());
+				//friendlist.addItem({name:"123"});
+				//Alert.show(friendlist.toArray().toString());
+			}
+			
+			
+			
+			private function sendMessage():void
+			{
+				if(outstream)
+				{
+					outstream.send("onIm",username.text,message.text);
+					info.text += localusername + " : " + message.text + "\n";
+					message.text = "";
+				}
+			}
+			
+			
+		]]>
+	</fx:Script>
+	<s:Panel title="P2P网络电话" left="10" right="10" top="10" bottom="20" borderVisible="true" fontFamily="微软雅黑">
+		<s:Panel id="_login" includeIn="Login" width="270" height="160" borderAlpha="1.0" horizontalCenter="0" title="登录" verticalCenter="0">
+			<s:Label paddingBottom="0" paddingLeft="5" paddingTop="5" text="用户名：" textAlign="center" verticalAlign="middle" x="10" y="10" left="15" top="10" width="75" height="25" fontSize="16"/>
+			<s:Label left="15" top="45" width="75" height="25" fontSize="16" paddingBottom="0" paddingLeft="5" paddingTop="5" text="密   码：" textAlign="center" verticalAlign="middle"/>
+			<s:TextInput id="username" enter="login()" width="150" paddingLeft="3" paddingTop="5" right="20" top="10" height="25" x="110" y="10"/>
+			<s:TextInput id="password" enter="login()" displayAsPassword="true" right="20" top="45" width="150" height="25" paddingLeft="3" paddingTop="5"/>
+			<s:Button label="登录" click="login()" fontSize="16" y="50" bottom="15" width="75" height="30" horizontalCenter="0"/>
+		</s:Panel>
+		<s:Group id="_invite" includeIn="Invite,Calling,Called" width="100%" height="100%">
+			<s:VGroup width="100%" height="100%" gap="20" horizontalAlign="center"
+					  verticalAlign="middle">
+				<s:HGroup width="100%" height="40" gap="10" horizontalAlign="center"
+						  verticalAlign="middle">
+					<s:DropDownList id="friend" width="200" height="30" dataProvider="{friendlist}" labelField="name" prompt="请选择想要聊天的在线好友"/>
+					<s:Button id="invite" height="30" label="邀请" click="startInvite()"/>
+				</s:HGroup>
+				<s:Label id="hint" width="100%" height="50" fontSize="16" text="欢迎使用P2P在线聊天系统"
+							 textAlign="center" verticalAlign="middle"/>
+			</s:VGroup>
+		</s:Group>
+		
+		<s:Panel id="_called" includeIn="Called" width="300" height="160" borderAlpha="1.0" horizontalCenter="0" title="建立会话中" verticalCenter="0">
+			<s:Label id="calledtext" left="15" right="15" top="15" height="50" fontSize="16"
+					 textAlign="center" verticalAlign="middle"/>
+			<s:Button right="50" bottom="15" width="75" height="30" label="拒绝"
+					  click="cancelInvite()" fontSize="16"/>
+			<s:Button left="50" bottom="15" width="75" height="30" label="接受" click="acceptInvite()"
+					  fontSize="16"/>
+		</s:Panel>
+		<s:Group id="_talk" includeIn="Talk" width="100%" height="100%" bottom="0">
+			<s:VGroup width="390" left="10" top="10" horizontalAlign="center"  gap="10" bottom="10">
+				<s:TextArea id="info" left="5" top="275" width="390" height="238" editable="false"
+							paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5"/>
+				<s:HGroup width="100%" left="5" top="65" verticalAlign="middle" gap="10" bottom="0">
+					<s:TextInput id="message" width="310" height="50" borderVisible="true" enter="sendMessage()"/>
+					<s:Button id="sendmessage" label="发送" height="50" click="sendMessage()"/>
+				</s:HGroup>
+			</s:VGroup>
+			<s:VGroup right="10" top="10" bottom="10" width="160" gap="14" horizontalAlign="center">
+				<s:VideoDisplay id="remotevideodisplay"  width="160" height="120"/>
+				<s:Button id="hangup" width="75" height="30" label="挂断" click="cancelInvite()"/>
+				<s:VideoDisplay id="localvideodisplay" width="160" height="120"/>
+			</s:VGroup>	
+		</s:Group>
+		<s:Panel id="_calling" includeIn="Talk" width="300" height="160" borderAlpha="1.0" horizontalCenter="0" title="正在邀请中" verticalCenter="0">
+			<s:Label id="callingtext" left="15" right="15" top="15" height="50" fontSize="16"
+					 textAlign="center" verticalAlign="middle"/>
+			<s:Button label="取消" click="cancelInvite()" fontSize="16" y="50" bottom="15" width="75" height="30" horizontalCenter="0"/>
+		</s:Panel>
+	</s:Panel>
+</s:Application>
