@@ -152,32 +152,33 @@
 					instream.receiveVideo(false);
 					
 					var i:Object=new Object();
-					i.onIm=function(name:String,value:String):void
+					i.getMessage=function(name:String,value:String):void
 					{
 						info.text += name + " : " + value + "\n";
 					}
-					i.onIncomingCall=function(name:String):void
+					i.getInvite=function(name:String):void
 					{
 						currentState = "Called";
 						calledtext.text = name + "正在邀请您，是否接受？";
 					}
-					i.onConnectSuccess=function(name:String):void
-					{
-						Alert.show("与"+name+"连接成功\n");
-						_calling.visible = false;
-						_talk.enabled = true;
-						//info.text+=;
-						//sendmessage.enabled=true;
-						currentState = "Talk";
-						instream.receiveAudio(true);
-						instream.receiveVideo(true);
-						remotevideo=new Video(160,120);
-						remotevideo.attachNetStream(instream);
-						remotevideodisplay.addChild(remotevideo);
-						//						outstream.send("onAcceptInvite");
-						//sendmessage.enabled=true;
-					}
-					i.onHangup=function():void
+//					i.connectSuccess=function(name:String):void
+//					{
+//						Alert.show("与"+name+"连接成功\n");
+//						service.setUserData.send(userid,localpeerid,3);
+//						_calling.visible = false;
+//						_talk.enabled = true;
+//						//info.text+=;
+//						//sendmessage.enabled=true;
+//						currentState = "Talk";
+//						instream.receiveAudio(true);
+//						instream.receiveVideo(true);
+//						remotevideo=new Video(160,120);
+//						remotevideo.attachNetStream(instream);
+//						remotevideodisplay.addChild(remotevideo);
+//						//						outstream.send("onAcceptInvite");
+//						//sendmessage.enabled=true;
+//					}
+					i.connectEnd=function():void
 					{
 						stopTalk();
 					}
@@ -190,6 +191,7 @@
 			
 			private function acceptInvite():void
 			{
+				
 				currentState = "Talk";
 				_calling.visible = false;
 				_talk.enabled = true;
@@ -206,7 +208,7 @@
 				remotevideo = new Video(160,120);
 				remotevideo.attachNetStream(instream);
 				remotevideodisplay.addChild(remotevideo);
-				
+				service.setUserData.send(userid,localpeerid,3);
 				//Alert.show("OnConnectSuccess Sended");
 			}
 			
@@ -214,6 +216,7 @@
 			{
 				if(friend.selectedItem)
 				{
+					
 					currentState = "Talk";
 					remotepeerid = friend.selectedItem.peerid.toString();
 					
@@ -233,47 +236,23 @@
 					instream.addEventListener(NetStatusEvent.NET_STATUS,inStreamHandler);
 					instream.play("callee");
 					
-					//Caller
-//					var i:Object=new Object();
-//					i.onIm=function(name:String,value:String):void
-//					{
-//						info.text += name + " : " + value + "\n";
-//					}
-//					i.onConnectSuccess=function(name:String):void
-//					{
-//						Alert.show("与"+name+"连接成功\n");
-//						_calling.visible = false;
-//						_talk.enabled = true;
-//						//info.text+=;
-//						//sendmessage.enabled=true;
-//						currentState = "Talk";
-//						instream.receiveAudio(true);
-//						instream.receiveVideo(true);
-//						remotevideo=new Video(160,120);
-//						remotevideo.attachNetStream(instream);
-//						remotevideodisplay.addChild(remotevideo);
-////						outstream.send("onAcceptInvite");
-//						//sendmessage.enabled=true;
-//					}
-//					i.onHangup=function():void
-//					{
-//						stopTalk();
-//					}
-//					
-//					instream.client=i;
 					var i:Object=new Object();
-					i.onIm=function(name:String,value:String):void
+					i.getMessage=function(name:String,value:String):void
 					{
 						info.text += name + " : " + value + "\n";
 					}
-					i.onIncomingCall=function(name:String):void
+					i.getInvite=function(name:String):void
 					{
 						currentState = "Called";
 						calledtext.text = name + "正在邀请您，是否接受？";
 					}
-					i.onConnectSuccess=function(name:String):void
+					i.connectSuccess=function(name:String):void
 					{
-						Alert.show("与"+name+"连接成功\n");
+						service.setUserData.send(userid,localpeerid,3);
+						if(currentState == "Talk" )
+						{
+							Alert.show("与"+name+"连接成功\n");
+						}
 						_calling.visible = false;
 						_talk.enabled = true;
 						//info.text+=;
@@ -287,12 +266,12 @@
 						//						outstream.send("onAcceptInvite");
 						//sendmessage.enabled=true;
 					}
-					i.onHangup=function():void
+					i.connectEnd=function():void
 					{
 						stopTalk();
 					}
 					instream.client=i;
-					
+					service.setUserData.send(userid,localpeerid,2);
 					callingtext.text = "正在邀请"+friend.selectedItem.name.toString()+"，请等待......";
 					_talk.enabled = false;
 				}
@@ -305,7 +284,7 @@
 			
 			private function cancelInvite():void
 			{
-				outstream.send("onHangup");
+				outstream.send("connectEnd");
 				stopTalk();
 				//currentState = "Invite";
 			}
@@ -382,6 +361,7 @@
 				localvideodisplay.removeChild(localvideo);
 				remotevideodisplay.removeChild(remotevideo);
 				initMyStream();
+				service.setUserData.send(userid,localpeerid,1);
 				//info.text+="已挂断\n";
 				//callyou.label="呼叫";
 				//sendmessage.enabled=false;
@@ -403,14 +383,14 @@
 			{
 				if (event.info.code == "NetStream.Play.Start" )
 				{
-					outstream.send("onIncomingCall",localusername);
+					outstream.send("getInvite",localusername);
 				}
 			}
 
 			private function outAcceptStreamHandler(event:NetStatusEvent):void
 			{
 				//Alert.show(event.info.code);
-				outstream.send("onConnectSuccess",localusername);
+				outstream.send("connectSuccess",localusername);
 			}
 //			
 			private function setUserData_resultHandler(event:ResultEvent):void
@@ -421,7 +401,10 @@
 					case 0:
 						service.getUserData.send(userid);
 						//Alert.show("登陆成功");
-						currentState = "Invite";
+						if( currentState == "Login" )
+						{
+							currentState = "Invite";
+						}
 						break;
 					case 1:
 						Alert.show("服务器更新失败");
@@ -451,7 +434,7 @@
 			{
 				if(outstream)
 				{
-					outstream.send("onIm",username.text,message.text);
+					outstream.send("getMessage",username.text,message.text);
 					info.text += localusername + " : " + message.text + "\n";
 					message.text = "";
 				}

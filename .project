@@ -31,5 +31,10 @@
 			<type>2</type>
 			<location>C:/Users/wangyang21/Desktop/wamp</location>
 		</link>
+		<link>
+			<name>bin-release2</name>
+			<type>2</type>
+			<location>E:/wamp/www/P2P</location>
+		</link>
 	</linkedResources>
 </projectDescription>
