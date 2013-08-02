@@ -36,39 +36,49 @@
 			import mx.validators.Validator;
 			
 			private var validatorObject:Array;
+			//Circus服务器域名及开发者ID
 			private var adobeurl:String = "rtmfp://stratus.adobe.com/1710124cbf69e3f25b780c13-d6cbf2cb35a1";
 			private var netConnection:NetConnection;
-			private var userid:Number;
-			private var localpeerid:String;
-			private var localusername:String;
-			private var remotepeerid:String;
 			
+			//存储当前登录用户的相关信息	
+			private var userid:Number;  //唯一标识ID
+			private var localpeerid:String;  //邀请方唯一PeerID。成功登录后从Circus服务器获取
+			private var localusername:String;  //唯一用户名。用于各种提示上的内容显示
+			private var remotepeerid:String;  //被邀请方唯一PeerID。成功登录后从服务器获取
+			
+			//用于绑定好友列表并向其提供数据
 			[Bindable]
 			private var friendlist:ArrayCollection = new ArrayCollection();
 			
-			private var mystream:NetStream;
-			private var outstream:NetStream;
-			private var instream:NetStream;
-			private var controlstream:NetStream;
+			//网络流
+			private var mystream:NetStream;  //本地流，用于广播PeerID
+			private var controlstream:NetStream;  //控制流，用于邀请时播放远端PeerID
+			private var instream:NetStream;  //输入流，获取对方的多媒体内容
+			private var outstream:NetStream;  //输出流，输出本地的多媒体内容
 			
 			private var remotevideo:Video;
 			private var localvideo:Video;
 			
+			//初始化函数
 			private function init():void
 			{
+				//构造需要验证的内容
 				validatorObject = [username,password];
 			}
 			
+			//用于同AmfPHP的Service连接时的事件处理
 			private function service_faultHandler(event:FaultEvent):void
 			{
 				Alert.show(event.fault.faultDetail);
 				Alert.show(event.fault.faultString);
-				//Alert.show("无法连接到服务器");
 			}
 			
+			//登录
 			private function login():void
 			{
-				//Alert.show("Login Clicked");
+				_loginbutton.enabled = false;
+				_loginbutton.label = "登录中...";
+				//对usernaem和password中的内容进行验证
 				var validatorResult:Array = Validator.validateAll(validatorObject);
 				if(validatorResult.length == 0)
 				{
@@ -80,12 +90,19 @@
 				}
 			}
 			
+			//用于对服务器返回的数据进行逻辑处理
 			private function validate_resultHandler(event:ResultEvent):void
 			{
 				var object:Object = event.message.body;
 				var result:Number = object.result.toString();
 				userid = object.userid.toString();
-				//Alert.show(userid.toString());
+				
+				/*
+				case中内容为不同状态：
+				0 => 验证通过
+				1 => 用户名或密码错误
+				2 => 用户名不存在
+				*/
 				switch(result)
 				{
 					case 0:
@@ -106,6 +123,7 @@
 				}
 			}
 			
+			//通过服务器验证后同Circus服务器进行连接
 			private function connect():void
 			{
 				netConnection = new NetConnection();
@@ -113,6 +131,7 @@
 				netConnection.connect(adobeurl);
 			}
 			
+			//与Circus服务器之间连接的事件处理
 			private function netConnection_statusHandler(event:NetStatusEvent):void
 			{
 				switch (event.info.code)
@@ -123,61 +142,49 @@
 						localusername = username.text;
 						service.setUserData.send(userid,localpeerid,1);
 						initMyStream();
-						//Alert.show("Data sended");
-						//Alert.show(netConnection.nearID);
 						break;
 					case "NetStream.Connect.Success":
-//						currentState = "Talk";
 						break;
 					default:
 						//Alert.show(event.info.code);
 						break;
 				}
 			}
-			//初始化mystream和instream，
+			
+			//初始化mystream，instream和outstream
 			private function initMyStream():void
 			{
+				//广播本地PeerID并等待连接
 				mystream=new NetStream(netConnection,NetStream.DIRECT_CONNECTIONS);
 				mystream.addEventListener(NetStatusEvent.NET_STATUS,netStreamHandler);
 				mystream.publish(localpeerid);
 				
+				//Callee端的监听器
 				var obj:Object=new Object();
 				obj.onPeerConnect=function(subscriberstream:NetStream):Boolean
 				{
+					//初始化输入流并按邀请方（caller）进行播放
 					instream=new NetStream(netConnection,subscriberstream.farID);
 					instream.addEventListener(NetStatusEvent.NET_STATUS,inStreamHandler);
 					instream.play("caller");
 					
+					//设置输入流是否接受对面端的视频流和音频流
 					instream.receiveAudio(false);
 					instream.receiveVideo(false);
 					
 					var i:Object=new Object();
+					//获取对方的文字信息
 					i.getMessage=function(name:String,value:String):void
 					{
 						info.text += name + " : " + value + "\n";
 					}
+					//获取对方邀请
 					i.getInvite=function(name:String):void
 					{
 						currentState = "Called";
 						calledtext.text = name + "正在邀请您，是否接受？";
 					}
-//					i.connectSuccess=function(name:String):void
-//					{
-//						Alert.show("与"+name+"连接成功\n");
-//						service.setUserData.send(userid,localpeerid,3);
-//						_calling.visible = false;
-//						_talk.enabled = true;
-//						//info.text+=;
-//						//sendmessage.enabled=true;
-//						currentState = "Talk";
-//						instream.receiveAudio(true);
-//						instream.receiveVideo(true);
-//						remotevideo=new Video(160,120);
-//						remotevideo.attachNetStream(instream);
-//						remotevideodisplay.addChild(remotevideo);
-//						//						outstream.send("onAcceptInvite");
-//						//sendmessage.enabled=true;
-//					}
+					//对方通知会话已结束
 					i.connectEnd=function():void
 					{
 						stopTalk();
@@ -189,53 +196,68 @@
 				mystream.client=obj;
 			}
 			
+			//被邀请方接受邀请
 			private function acceptInvite():void
 			{
-				
 				currentState = "Talk";
 				_calling.visible = false;
 				_talk.enabled = true;
+				//初始化输出流并按被邀请方（callee）进行广播
 				outstream = new NetStream(netConnection,NetStream.DIRECT_CONNECTIONS);
 				outstream.addEventListener(NetStatusEvent.NET_STATUS,outAcceptStreamHandler);
-				//outstream.send("onConnectSuccess",localusername);
 				outstream.publish("callee");
-			//	outstream.send("onConnectSuccess",localusername);
+				
+				//将本地的音频和视频内容附加到输出流中
 				publishAudio();
 				publishVideo();
 				
+				//将对方传输的音频流和视频流附加到输入流中
 				instream.receiveAudio(true);
 				instream.receiveVideo(true);
+				
+				//初始化远程视频窗口
 				remotevideo = new Video(160,120);
 				remotevideo.attachNetStream(instream);
 				remotevideodisplay.addChild(remotevideo);
+				
+				//更新用户状态
 				service.setUserData.send(userid,localpeerid,3);
 				//Alert.show("OnConnectSuccess Sended");
 			}
 			
+			//邀请方开始进行邀请
 			private function startInvite():void
 			{
+				//判断好友列表中是否有在线好友被选中
 				if(friend.selectedItem)
 				{
-					
+					//更改现有状态，调整布局
 					currentState = "Talk";
+					_calling.visible = true;
+					_talk.enabled = false;
+					
+					//将好友列表中对方的PeerID存入remotepeerid中
 					remotepeerid = friend.selectedItem.peerid.toString();
 					
+					//控制流开始接收对方peerid来和对方进行连接
 					controlstream = new NetStream(netConnection,remotepeerid);
 					controlstream.addEventListener(NetStatusEvent.NET_STATUS,netStreamHandler);
 					controlstream.play(remotepeerid);
 					
+					//初始化输出流并按邀请方（caller）进行广播
 					outstream = new NetStream(netConnection,NetStream.DIRECT_CONNECTIONS);
 					outstream.addEventListener(NetStatusEvent.NET_STATUS,outInviteStreamHandler);
-					//outstream.send("onIncomingCall",localusername);
 					outstream.publish("caller");
 					
 					publishVideo();
 					publishAudio();
 					
+					//初始化输入流并按被邀请方（callee）进行播放
 					instream=new NetStream(netConnection,remotepeerid);
 					instream.addEventListener(NetStatusEvent.NET_STATUS,inStreamHandler);
 					instream.play("callee");
 					
+					//Caller端的监听器
 					var i:Object=new Object();
 					i.getMessage=function(name:String,value:String):void
 					{
@@ -246,8 +268,10 @@
 						currentState = "Called";
 						calledtext.text = name + "正在邀请您，是否接受？";
 					}
+					//Caller端监听器添加的功能，用于响应callee端对邀请的接收
 					i.connectSuccess=function(name:String):void
 					{
+						//更新用户状态
 						service.setUserData.send(userid,localpeerid,3);
 						if(currentState == "Talk" )
 						{
@@ -255,16 +279,12 @@
 						}
 						_calling.visible = false;
 						_talk.enabled = true;
-						//info.text+=;
-						//sendmessage.enabled=true;
 						currentState = "Talk";
 						instream.receiveAudio(true);
 						instream.receiveVideo(true);
 						remotevideo=new Video(160,120);
 						remotevideo.attachNetStream(instream);
 						remotevideodisplay.addChild(remotevideo);
-						//						outstream.send("onAcceptInvite");
-						//sendmessage.enabled=true;
 					}
 					i.connectEnd=function():void
 					{
@@ -282,13 +302,20 @@
 				//Alert.show(friend.selectedItem);
 			}
 			
+			/*结束邀请时调用，情况如下：
+			1、邀请方取消邀请
+			2、被邀请方拒绝邀请
+			3、成功进行会话后任意一方关闭会话
+			4、用户关闭程序或程序非正常退出
+			*/
 			private function cancelInvite():void
 			{
+				//向对方发送会话结束标识
 				outstream.send("connectEnd");
 				stopTalk();
-				//currentState = "Invite";
 			}
 			
+			//将音频内容附加到输出流中
 			private function publishAudio():void
 			{
 				var mic:Microphone;
@@ -303,6 +330,7 @@
 				}
 			}
 			
+			//将视频内容附加到输出流中
 			private function publishVideo():void
 			{
 				var cam:Camera;
@@ -316,21 +344,21 @@
 				{
 					Alert.show("未检测到摄像头");
 				}
+				
+				//初始化本地视频窗口
 				localvideo=new Video(160,120);
 				localvideo.attachCamera(cam);
 				localvideodisplay.addChild(localvideo);
 			}
-			
-//			private function rejectInvite():void
-//			{
-//				outstream.send("onHangup");
-//				stopTalk();
-//			}
-			
+
+			//会话结束时调用
 			private function stopTalk():void
 			{
+				//回复登陆后状态重新进行等待或邀请
 				Alert.show("链接已断开");
 				currentState = "Invite";
+				
+				//初始化所有网络流和视频窗口
 				if(instream)
 				{
 					instream.close();
@@ -350,6 +378,7 @@
 				instream=null;
 				outstream=null;
 				controlstream=null;
+				
 				if(localvideo!=null)
 				{
 					localvideo.attachCamera(null);
@@ -360,44 +389,57 @@
 				}
 				localvideodisplay.removeChild(localvideo);
 				remotevideodisplay.removeChild(remotevideo);
+				
+				//重新构建网络流，更新用户状态
 				initMyStream();
 				service.setUserData.send(userid,localpeerid,1);
-				//info.text+="已挂断\n";
-				//callyou.label="呼叫";
-				//sendmessage.enabled=false;
 			}
-			
-			
-			
+					
+			//控制流事件处理函数，暂时为空
 			private function netStreamHandler(event:NetStatusEvent):void
 			{
 				
 			}
 			
+			//输入流事件处理函数，暂时为空
 			private function inStreamHandler(event:NetStatusEvent):void
 			{
 				
 			}
 			
+			//输出流进行邀请时事件处理函数
 			private function outInviteStreamHandler(event:NetStatusEvent):void
 			{
+				/*有以下情况会触发该事件处理函数：
+				1、用户间建立连接
+				2、用户间取消连接
+				3、用户间的连接由于其他原因关闭
+				该函数暂时只处理第一种情况
+				*/
 				if (event.info.code == "NetStream.Play.Start" )
 				{
 					outstream.send("getInvite",localusername);
 				}
 			}
 
+			//输出流接受邀请时事件处理函数
 			private function outAcceptStreamHandler(event:NetStatusEvent):void
 			{
-				//Alert.show(event.info.code);
 				outstream.send("connectSuccess",localusername);
 			}
-//			
+			
+			//更新用户状态时的事件处理函数
 			private function setUserData_resultHandler(event:ResultEvent):void
 			{
 				var result:Number = event.message.body.toString();
+				
 				switch(result)
 				{
+					/*
+					case中内容为不同状态：
+					0 => 更新成功
+					1 => 更新失败
+					*/
 					case 0:
 						service.getUserData.send(userid);
 						//Alert.show("登陆成功");
@@ -414,22 +456,19 @@
 						break;
 				}
 			}
-			
+		
+			//获取用户信息时的事件处理函数
 			private function getUserData_resultHandler(event:ResultEvent):void
 			{
+				//将获取到的好友信息整理到friendlist中，格式为{name:"",peerid:""}
 				var result:Array = event.message.body as Array;
-				//Alert.show(result[0].username.toString());
 				for(var i:Number = 0; i < result.length; i++)
 				{	
 					friendlist.addItem({name:result[i].username,peerid:result[i].peerid});
 				}
-				//friendlist.addItem(array.pop());
-				//friendlist.addItem({name:"123"});
-				//Alert.show(friendlist.toArray().toString());
-			}
+			}		
 			
-			
-			
+			//向对方发送文字数据
 			private function sendMessage():void
 			{
 				if(outstream)
@@ -439,8 +478,7 @@
 					message.text = "";
 				}
 			}
-			
-			
+						
 		]]>
 	</fx:Script>
 	<s:Panel title="P2P网络电话" left="10" right="10" top="10" bottom="20" borderVisible="true" fontFamily="微软雅黑">
@@ -449,7 +487,7 @@
 			<s:Label left="15" top="45" width="75" height="25" fontSize="16" paddingBottom="0" paddingLeft="5" paddingTop="5" text="密   码：" textAlign="center" verticalAlign="middle"/>
 			<s:TextInput id="username" enter="login()" width="150" paddingLeft="3" paddingTop="5" right="20" top="10" height="25" x="110" y="10"/>
 			<s:TextInput id="password" enter="login()" displayAsPassword="true" right="20" top="45" width="150" height="25" paddingLeft="3" paddingTop="5"/>
-			<s:Button label="登录" click="login()" fontSize="16" y="50" bottom="15" width="75" height="30" horizontalCenter="0"/>
+			<s:Button id="_loginbutton" label="登录" click="login()" fontSize="12" y="50" bottom="15" width="75" height="30" horizontalCenter="0"/>
 		</s:Panel>
 		<s:Group id="_invite" includeIn="Invite,Calling,Called" width="100%" height="100%">
 			<s:VGroup width="100%" height="100%" gap="20" horizontalAlign="center"
@@ -467,10 +505,8 @@
 		<s:Panel id="_called" includeIn="Called" width="300" height="160" borderAlpha="1.0" horizontalCenter="0" title="建立会话中" verticalCenter="0">
 			<s:Label id="calledtext" left="15" right="15" top="15" height="50" fontSize="16"
 					 textAlign="center" verticalAlign="middle"/>
-			<s:Button right="50" bottom="15" width="75" height="30" label="拒绝"
-					  click="cancelInvite()" fontSize="16"/>
-			<s:Button left="50" bottom="15" width="75" height="30" label="接受" click="acceptInvite()"
-					  fontSize="16"/>
+			<s:Button right="50" bottom="15" width="75" height="30" label="拒绝" click="cancelInvite()" fontSize="16"/>
+			<s:Button left="50" bottom="15" width="75" height="30" label="接受" click="acceptInvite()" fontSize="16"/>
 		</s:Panel>
 		<s:Group id="_talk" includeIn="Talk" width="100%" height="100%" bottom="0">
 			<s:VGroup width="390" left="10" top="10" horizontalAlign="center"  gap="10" bottom="10">
