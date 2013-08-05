@@ -5,22 +5,20 @@
 	<s:states>
 		<s:State name="Login"/>
 		<s:State name="Invite"/>
-		<s:State name="Calling"/>
 		<s:State name="Called"/>
 		<s:State name="Talk"/>
+		<s:State name="Register"/>
 	</s:states>
 	<fx:Declarations>
-		<mx:StringValidator id="_username" source="{username}" property="text" required="true" minLength="6" maxLength="16"
-							requiredFieldError="请输入用户名" tooShortError="用户名长度必须大于6个字符" tooLongError="用户名长度必须小于16个字符"/>
-		<mx:StringValidator id="_password" source="{password}" property="text" required="true" minLength="6" maxLength="20" 
-							requiredFieldError="请输入密码" tooShortError="密码长度必须大于6个字符" tooLongError="密码长度必须小于20个字符"/>
-		<s:RemoteObject id="service"
-						destination="amfphp"
-						source="p2p"
-						fault="service_faultHandler(event)">
+		<mx:StringValidator id="_username" property="text" required="true" minLength="6" maxLength="16" requiredFieldError="用户名不能为空" tooShortError="用户名长度必须大于6个字符" tooLongError="用户名长度必须小于16个字符" />
+		<mx:StringValidator id="_password" property="text" required="true" minLength="8" maxLength="20" requiredFieldError="密码不能为空" tooShortError="密码长度必须大于8个字符" tooLongError="密码长度必须小于20个字符" />
+		<s:RemoteObject id="service" destination="amfphp" source="p2p" fault="service_faultHandler(event)">
 			<s:method name="validate" result="validate_resultHandler(event)" />
+			<s:method name="register" result="register_resultHandler(event)" />
 			<s:method name="setUserData" result="setUserData_resultHandler(event)" />
+			<s:method name="getFriendList" result="getFriendList_resultHandler(event)" />
 			<s:method name="getUserData" result="getUserData_resultHandler(event)" />
+			<s:method name="addFriend" result="addFriend_resultHandler(event)" />
 		</s:RemoteObject>
 	</fx:Declarations>
 	<fx:Script>
@@ -34,8 +32,7 @@
 			import mx.rpc.events.FaultEvent;
 			import mx.rpc.events.ResultEvent;
 			import mx.validators.Validator;
-			
-			private var validatorObject:Array;
+
 			//Circus服务器域名及开发者ID
 			private var adobeurl:String = "rtmfp://stratus.adobe.com/1710124cbf69e3f25b780c13-d6cbf2cb35a1";
 			private var netConnection:NetConnection;
@@ -59,11 +56,64 @@
 			private var remotevideo:Video;
 			private var localvideo:Video;
 			
+			private var usernameIsVaild:Boolean = false;
+			private var passwordIsVaild:Boolean = false;
+			
+			//Login & Register Start
+			
 			//初始化函数
 			private function init():void
 			{
-				//构造需要验证的内容
-				validatorObject = [username,password];
+				_username.source = username;
+				_password.source = password;
+			}
+			
+			//跳转至注册页面
+			private function startRegister():void
+			{
+				
+				currentState = "Register";
+				_username.source = registerusername;
+				_password.source = registerpassword;
+			}
+			
+			//提交注册内容
+			private function submitRegister():void
+			{
+				_registerbutton.label = "注册中...";
+				_registerbutton.enabled = false;
+				if( validateString(registerusername.text,6,16) && validateString(registerpassword.text,8,20) )
+				{
+					//Alert.show("Request Sended");
+					service.register.send( registerusername.text, registerpassword.text );					
+				}
+				else
+				{
+					Alert.show("请检查您的输入内容是否合法","用户输入错误");
+					_registerbutton.label = "完成注册";
+					_registerbutton.enabled = true;
+				}
+			}
+			
+			private function register_resultHandler(event:ResultEvent):void
+			{
+				var result:Number = event.message.body.toString();
+				
+				switch( result )
+				{
+					case 0:
+						Alert.show("注册失败","服务器错误");
+						_registerbutton.label = "完成注册";
+						_registerbutton.enabled = true;
+						break;
+					case 1:
+						Alert.show("注册成功","服务器操作成功");
+						currentState = "Login";
+						break;
+					default:
+						Alert.show("服务器返回值非法","服务器错误");
+						break;
+				}
 			}
 			
 			//用于同AmfPHP的Service连接时的事件处理
@@ -73,20 +123,27 @@
 				Alert.show(event.fault.faultString);
 			}
 			
+			private function validateString( source:String, min:Number, max:Number ):Boolean
+			{
+				return (source.length >= min) && (source.length <= max);
+			}
+			
 			//登录
 			private function login():void
 			{
 				_loginbutton.enabled = false;
 				_loginbutton.label = "登录中...";
-				//对usernaem和password中的内容进行验证
-				var validatorResult:Array = Validator.validateAll(validatorObject);
-				if(validatorResult.length == 0)
+				//对usernaem和password中的内容进行验证	
+				if( validateString(username.text,6,16) && validateString(password.text,8,20) )
 				{
-					service.validate.send( username.text, password.text );
+					//Alert.show("Request Sended");
+					service.validate.send( username.text, password.text );					
 				}
 				else
 				{
-					var validatorEvent:ValidationResultEvent = validatorResult[0] as ValidationResultEvent;
+					Alert.show("请检查您的输入内容是否合法","用户输入错误");
+					_loginbutton.enabled = true;
+					_loginbutton.label = "登录";
 				}
 			}
 			
@@ -95,7 +152,6 @@
 			{
 				var object:Object = event.message.body;
 				var result:Number = object.result.toString();
-				userid = object.userid.toString();
 				
 				/*
 				case中内容为不同状态：
@@ -106,19 +162,68 @@
 				switch(result)
 				{
 					case 0:
+						userid = object.userid.toString();
 						connect();
 						break;
 					case 1:
-						Alert.show("用户名或密码错误");
+						Alert.show("用户名或密码错误","身份验证错误");
 						break;
 					case 2:
-						Alert.show("该用户名不存在");
+						Alert.show("该用户名不存在","身份验证错误");
 						break;
 					case 3:
-						Alert.show("数据库连接错误");
+						Alert.show("数据库连接错误","服务器错误");
 						break;
 					default:
-						Alert.show("服务器返回值非法");
+						Alert.show("服务器返回值非法","服务器错误");
+						break;
+				}
+				if( result != 0)
+				{
+					_loginbutton.enabled = true;
+					_loginbutton.label = "登录";
+				}
+			}
+			
+			//点击添加好友时触发函数
+			private function addFriend():void
+			{
+				if(friendname.text.length > 0)
+				{
+					service.addFriend.send(userid,friendname.text);
+				}
+				else
+				{
+					Alert.show("请输入需要添加的好友名字","用户输入错误");
+				}
+			}
+			
+			//addFriend事件处理函数
+			private function addFriend_resultHandler(event:ResultEvent):void
+			{	
+				var result:Number = event.message.body.toString();
+				/*
+				case中内容为不同状态：
+				0 => 添加失败
+				1 => 添加成功
+				2 => 未找到指定名字的好友
+				3 => 添加自己为好友
+				*/
+				switch(result)
+				{
+					case 0:
+						Alert.show("添加好友失败","服务器错误");
+						break;
+					case 1:
+						Alert.show("添加好友成功","服务器操作成功");
+						friendname.text = "";
+						service.getFriendList.send(userid);
+						break;
+					case 2:
+						Alert.show("未找到指定名称的好友","好友添加错误");
+						break;
+					case 3:
+						Alert.show("不能添加自己为好友","好友添加错误");
 						break;
 				}
 			}
@@ -228,8 +333,24 @@
 			//邀请方开始进行邀请
 			private function startInvite():void
 			{
+				//Alert.show("Start Invite");
 				//判断好友列表中是否有在线好友被选中
 				if(friend.selectedItem)
+				{
+					//Alert.show(friend.selectedItem.id.toString());
+					service.getUserData.send(friend.selectedItem.id);
+				}
+				else
+				{
+					Alert.show("请选择您想要邀请的好友","用户输入错误");
+				}
+				//Alert.show(friend.selectedItem);
+			}
+			
+			private function getUserData_resultHandler(event:ResultEvent):void
+			{
+				remotepeerid = event.message.body.toString();
+				if( remotepeerid.length > 0 )
 				{
 					//更改现有状态，调整布局
 					currentState = "Talk";
@@ -237,7 +358,6 @@
 					_talk.enabled = false;
 					
 					//将好友列表中对方的PeerID存入remotepeerid中
-					remotepeerid = friend.selectedItem.peerid.toString();
 					
 					//控制流开始接收对方peerid来和对方进行连接
 					controlstream = new NetStream(netConnection,remotepeerid);
@@ -293,13 +413,12 @@
 					instream.client=i;
 					service.setUserData.send(userid,localpeerid,2);
 					callingtext.text = "正在邀请"+friend.selectedItem.name.toString()+"，请等待......";
-					_talk.enabled = false;
+					_talk.enabled = false;	
 				}
 				else
 				{
-					Alert.show("请选择您想要邀请的好友");
+					Alert.show("该用户离线或正在与他人进行会话");
 				}
-				//Alert.show(friend.selectedItem);
 			}
 			
 			/*结束邀请时调用，情况如下：
@@ -437,19 +556,19 @@
 				{
 					/*
 					case中内容为不同状态：
-					0 => 更新成功
-					1 => 更新失败
+					0 => 更新失败
+					1 => 更新成功
 					*/
 					case 0:
-						service.getUserData.send(userid);
+						Alert.show("服务器更新失败");
+						break;
+					case 1:
+						service.getFriendList.send(userid);
 						//Alert.show("登陆成功");
 						if( currentState == "Login" )
 						{
 							currentState = "Invite";
 						}
-						break;
-					case 1:
-						Alert.show("服务器更新失败");
 						break;
 					default:
 						Alert.show("服务器返回值非法");
@@ -458,13 +577,15 @@
 			}
 		
 			//获取用户信息时的事件处理函数
-			private function getUserData_resultHandler(event:ResultEvent):void
+			private function getFriendList_resultHandler(event:ResultEvent):void
 			{
-				//将获取到的好友信息整理到friendlist中，格式为{name:"",peerid:""}
+				//将获取到的好友信息整理到friendlist中，格式为{id:"",name:""}
 				var result:Array = event.message.body as Array;
+				//调用前清理friendlist防止多次插入
+				friendlist.removeAll();
 				for(var i:Number = 0; i < result.length; i++)
 				{	
-					friendlist.addItem({name:result[i].username,peerid:result[i].peerid});
+					friendlist.addItem({id:result[i].id,name:result[i].username});
 				}
 			}		
 			
@@ -479,6 +600,17 @@
 				}
 			}
 						
+			protected function _username_validHandler(event:ValidationResultEvent):Boolean
+			{
+				return true;
+				
+			}
+			
+			protected function _password_validHandler(event:ValidationResultEvent):Boolean
+			{
+				return true;
+			}
+			
 		]]>
 	</fx:Script>
 	<s:Panel title="P2P网络电话" left="10" right="10" top="10" bottom="20" borderVisible="true" fontFamily="微软雅黑">
@@ -487,21 +619,33 @@
 			<s:Label left="15" top="45" width="75" height="25" fontSize="16" paddingBottom="0" paddingLeft="5" paddingTop="5" text="密   码：" textAlign="center" verticalAlign="middle"/>
 			<s:TextInput id="username" enter="login()" width="150" paddingLeft="3" paddingTop="5" right="20" top="10" height="25" x="110" y="10"/>
 			<s:TextInput id="password" enter="login()" displayAsPassword="true" right="20" top="45" width="150" height="25" paddingLeft="3" paddingTop="5"/>
-			<s:Button id="_loginbutton" label="登录" click="login()" fontSize="12" y="50" bottom="15" width="75" height="30" horizontalCenter="0"/>
+			<s:Button id="_loginbutton" left="50" bottom="15" width="75" height="30" label="登录" click="login()" fontSize="12"/>
+			<s:Button right="50" bottom="15" width="75" height="30" label="注册" click="startRegister()" fontSize="12"/>
 		</s:Panel>
-		<s:Group id="_invite" includeIn="Invite,Calling,Called" width="100%" height="100%">
+		<s:Panel id="_register" includeIn="Register" width="270" height="160" borderAlpha="1.0" horizontalCenter="0" title="注册" verticalCenter="0">
+			<s:Label paddingBottom="0" paddingLeft="5" paddingTop="5" text="用户名：" textAlign="center" verticalAlign="middle" x="10" y="10" left="15" top="10" width="75" height="25" fontSize="16"/>
+			<s:Label left="15" top="45" width="75" height="25" fontSize="16" paddingBottom="0" paddingLeft="5" paddingTop="5" text="密   码：" textAlign="center" verticalAlign="middle"/>
+			<s:TextInput id="registerusername" enter="submitRegister()" width="150" paddingLeft="3" paddingTop="5" right="20" top="10" height="25" x="110" y="10"/>
+			<s:TextInput id="registerpassword" enter="submitRegister()" displayAsPassword="true" right="20" top="45" width="150" height="25" paddingLeft="3" paddingTop="5"/>
+			<s:Button id="_registerbutton" label="完成注册" click="submitRegister()" fontSize="12" y="50" bottom="15" width="75" height="30" horizontalCenter="0"/>
+		</s:Panel>
+		<s:Group id="_invite" includeIn="Invite,Called" width="100%" height="100%">
 			<s:VGroup width="100%" height="100%" gap="20" horizontalAlign="center"
 					  verticalAlign="middle">
+				<s:Label id="hint" width="100%" height="50" fontSize="16" text="欢迎使用P2P在线聊天软件" textAlign="center" verticalAlign="middle"/>
+				<s:HGroup width="100%" height="40" gap="10" horizontalAlign="center"
+						  verticalAlign="middle">
+					<s:TextInput id="friendname" width="200" height="30" prompt="请输入需要添加的好友名称" enter="addFriend()"/>
+					<s:Button width="75" height="30" label="添加好友" click="addFriend()"/>
+				</s:HGroup>
 				<s:HGroup width="100%" height="40" gap="10" horizontalAlign="center"
 						  verticalAlign="middle">
 					<s:DropDownList id="friend" width="200" height="30" dataProvider="{friendlist}" labelField="name" prompt="请选择想要聊天的在线好友"/>
-					<s:Button id="invite" height="30" label="邀请" click="startInvite()"/>
+					<s:Button id="invite" height="30" label="邀请" click="startInvite()"
+							  width.Invite="75"/>
 				</s:HGroup>
-				<s:Label id="hint" width="100%" height="50" fontSize="16" text="欢迎使用P2P在线聊天系统"
-							 textAlign="center" verticalAlign="middle"/>
 			</s:VGroup>
-		</s:Group>
-		
+		</s:Group>	
 		<s:Panel id="_called" includeIn="Called" width="300" height="160" borderAlpha="1.0" horizontalCenter="0" title="建立会话中" verticalCenter="0">
 			<s:Label id="calledtext" left="15" right="15" top="15" height="50" fontSize="16"
 					 textAlign="center" verticalAlign="middle"/>

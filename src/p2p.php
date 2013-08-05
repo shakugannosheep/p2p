@@ -27,6 +27,7 @@ class p2p
 		 */
 		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "select * from user where username = '$username'";
+
 		//判断符合条件的用户名是否存在，并将相关记录赋值
 		if( $row = $db->query($query)->fetch_assoc() )
 		{
@@ -51,6 +52,33 @@ class p2p
 		return $userinfo;
 	}
 
+	public function register( $username, $password )
+	{
+		/**
+		 *@return int  //数据库操作的进行状态
+		 *0 => 注册失败
+		 *1 => 注册成功
+		 */
+		$password = md5($password);
+		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$query = "insert into user (username,password) values ('$username','$password')";
+
+		return $db->query($query) ? 1 : 0;
+	}
+
+	// public function addFriend( $userid, $friendid )
+	// {
+	// 	/**
+	// 	 *@return int  //数据库操作的进行状态
+	// 	 *0 => 好友添加失败
+	// 	 *1 => 好友添加成功
+	// 	 */
+	// 	$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+	// 	$query = "insert into relation (userid,friendid) values ('$userid','$friendid')";
+
+	// 	return $db->query($query) ? 1 : 0;
+	// }
+
 	public function setUserData( $userid, $peerid, $status )
 	{
 		/**
@@ -63,17 +91,17 @@ class p2p
 		 *3 => 已登录，正在进行会话
 		 *
 		 *
-		 *@return int result  //数据库操作的进行状态
-		 *0 => 更新成功
-		 *1 => 更新失败
+		 *@return int  //数据库操作的进行状态
+		 *0 => 更新失败
+		 *1 => 更新成功
 		 */
 		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "update user set peerid = '$peerid', status = '$status' where id = '$userid'";	
 
-		return $db->query($query) ? 0 : 1;
+		return $db->query($query) ? 1 : 0;
 	}
 
-	public function getUserData( $userid )
+	public function getFriendList( $userid )
 	{
 		/**
 		 *@param array friendlist  //用于获取用户的好友列表
@@ -81,7 +109,8 @@ class p2p
 		 *@return array friendlist
 		 */
 		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
-		$query = "select user.username,user.peerid from relation,user where relation.friendid = user.id and relation.userid = '$userid' and user.status = '1'";
+		$query = "select user.id,user.username from relation,user where relation.friendid = user.id and relation.userid = '$userid'";
+
 		$friendlist = array();
 		if( $result = $db->query($query) )
 		{
@@ -92,5 +121,62 @@ class p2p
 			}
 		}
 		return $friendlist;
+	}
+
+	public function getUserData( $userid )
+	{
+		/**
+		 *@param array friendlist  //用于获取用户的好友列表
+		 *
+		 *@return array friendlist
+		 */
+		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$query = "select peerid from user where id = '$userid' and status = '1'";
+		$result = $db->query($query)->fetch_assoc();
+		return $result ? $result['peerid'] : "";
+	}
+
+	public function addFriend( $userid, $friendname )
+	{
+		/**
+		 *@param string friendname  //待添加的好友姓名
+		 *
+		 *@return int status  //返回状态
+		 *0 => 添加失败
+		 *1 => 添加成功
+		 *2 => 未找到指定名字的好友
+		 *3 => 添加自己为好友
+		 */
+		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$query = "select id from user where username = '$friendname'";
+		//指定名称的好友存在
+		if( $result = $db->query($query)->fetch_assoc() )
+		{
+			$friendid = $result['id'];
+			//指定的好友就是申请者本人
+			if( $friendid == $userid )
+			{
+				$status = 3;
+			}
+			else
+			{
+				$query = "insert into relation (userid,friendid) values ('$userid','$friendid')";
+				if( $db->query($query) )
+				{
+					$status = 1;
+				}
+				else
+				{
+					$status = 0;
+				}
+			}
+		}
+		//指定名称的好友不存在
+		else
+		{
+			$status = 2;
+		}
+
+		return $status;
 	}
 }
