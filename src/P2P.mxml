@@ -8,6 +8,7 @@
 		<s:State name="Called"/>
 		<s:State name="Talk"/>
 		<s:State name="Register"/>
+		<s:State name="Setting"/>
 	</s:states>
 	<fx:Declarations>
 		<mx:StringValidator id="_username" property="text" required="true" minLength="6" maxLength="16" requiredFieldError="用户名不能为空" tooShortError="用户名长度必须大于6个字符" tooLongError="用户名长度必须小于16个字符" />
@@ -20,6 +21,8 @@
 			<s:method name="getUserData" result="getUserData_resultHandler(event)" />
 			<s:method name="addFriend" result="addFriend_resultHandler(event)" />
 		</s:RemoteObject>
+		<s:RadioButtonGroup id="audio"/>
+		<s:RadioButtonGroup id="video"/>
 	</fx:Declarations>
 	<fx:Script>
 		<![CDATA[
@@ -35,6 +38,7 @@
 
 			//Circus服务器域名及开发者ID
 			private var adobeurl:String = "rtmfp://stratus.adobe.com/1710124cbf69e3f25b780c13-d6cbf2cb35a1";
+			private var localurl:String = "rtmfp://172.22.224.173:1935";
 			private var netConnection:NetConnection;
 			
 			//存储当前登录用户的相关信息	
@@ -46,6 +50,11 @@
 			//用于绑定好友列表并向其提供数据
 			[Bindable]
 			private var friendlist:ArrayCollection = new ArrayCollection();
+			
+			private var mic:Microphone;
+			private var cam:Camera;
+			private var micst:SoundTransform;
+			private var speakerst:SoundTransform;
 			
 			//网络流
 			private var mystream:NetStream;  //本地流，用于广播PeerID
@@ -66,12 +75,26 @@
 			{
 				_username.source = username;
 				_password.source = password;
+				mic = Microphone.getMicrophone();
+				if( !mic )
+				{
+					Alert.show("未检测到麦克风，无法使用音频通话功能","设备错误");
+				}
+				cam = Camera.getCamera();
+				if( !cam )
+				{
+					Alert.show("未检测到摄像头，无法使用视频通话功能","设备错误");
+				}
+				else
+				{
+					cam.setQuality(0,90);
+				}
 			}
+			
 			
 			//跳转至注册页面
 			private function startRegister():void
 			{
-				
 				currentState = "Register";
 				_username.source = registerusername;
 				_password.source = registerpassword;
@@ -233,7 +256,7 @@
 			{
 				netConnection = new NetConnection();
 				netConnection.addEventListener(NetStatusEvent.NET_STATUS,netConnection_statusHandler);
-				netConnection.connect(adobeurl);
+				netConnection.connect(localurl);
 			}
 			
 			//与Circus服务器之间连接的事件处理
@@ -313,8 +336,8 @@
 				outstream.publish("callee");
 				
 				//将本地的音频和视频内容附加到输出流中
-				publishAudio();
-				publishVideo();
+				enableAudio(true);
+				enableVideo(true);
 				
 				//将对方传输的音频流和视频流附加到输入流中
 				instream.receiveAudio(true);
@@ -369,13 +392,16 @@
 					outstream.addEventListener(NetStatusEvent.NET_STATUS,outInviteStreamHandler);
 					outstream.publish("caller");
 					
-					publishVideo();
-					publishAudio();
+					enableAudio(true);
+					enableVideo(true);
 					
 					//初始化输入流并按被邀请方（callee）进行播放
 					instream=new NetStream(netConnection,remotepeerid);
 					instream.addEventListener(NetStatusEvent.NET_STATUS,inStreamHandler);
 					instream.play("callee");
+					
+					//添加音量调节
+					
 					
 					//Caller端的监听器
 					var i:Object=new Object();
@@ -432,42 +458,6 @@
 				//向对方发送会话结束标识
 				outstream.send("connectEnd");
 				stopTalk();
-			}
-			
-			//将音频内容附加到输出流中
-			private function publishAudio():void
-			{
-				var mic:Microphone;
-				mic=Microphone.getMicrophone();
-				if(mic!=null)
-				{
-					outstream.attachAudio(mic);
-				}
-				else
-				{
-					Alert.show("未检测到麦克风");
-				}
-			}
-			
-			//将视频内容附加到输出流中
-			private function publishVideo():void
-			{
-				var cam:Camera;
-				cam=Camera.getCamera();
-				if(cam!=null)
-				{
-					outstream.attachCamera(cam);
-					cam.setQuality(0,90);
-				}
-				else
-				{
-					Alert.show("未检测到摄像头");
-				}
-				
-				//初始化本地视频窗口
-				localvideo=new Video(160,120);
-				localvideo.attachCamera(cam);
-				localvideodisplay.addChild(localvideo);
 			}
 
 			//会话结束时调用
@@ -599,17 +589,116 @@
 					message.text = "";
 				}
 			}
-						
-			protected function _username_validHandler(event:ValidationResultEvent):Boolean
+			
+			//将音频内容附加到输出流中
+//			private function publishAudio():void
+//			{
+//				
+//			}
+//			
+//			//将视频内容附加到输出流中
+//			private function publishVideo():void
+//			{
+//				var cam:Camera;
+//				cam = Camera.getCamera();
+//				if(cam!=null)
+//				{
+//					outstream.attachCamera(cam);
+//					cam.setQuality(0,90);
+//				}
+//				else
+//				{
+//					Alert.show("未检测到摄像头");
+//				}
+//				
+//				//初始化本地视频窗口
+//				
+//			}
+			
+			private function startSetting():void
 			{
-				return true;
-				
+				currentState = "Setting";
 			}
 			
-			protected function _password_validHandler(event:ValidationResultEvent):Boolean
+			private function endSetting():void
 			{
-				return true;
+				currentState = "Talk";
 			}
+			
+			//设置音频及视频
+			private function settingAudio(isEnable:Boolean):void
+			{
+				if( isEnable )
+				{
+					audioenable.selected = true;
+					audiodisable.selected = false;
+				}
+				else
+				{
+					audioenable.selected = false;
+					audiodisable.selected = true;
+				}
+				enableAudio(isEnable);
+			}
+			
+			private function settingVideo(isEnable:Boolean):void
+			{
+				if( isEnable )
+				{
+					videoenable.selected = true;
+					videodisable.selected = false;
+				}
+				else
+				{
+					videoenable.selected = false;
+					videodisable.selected = true;
+				}
+				enableVideo(isEnable);
+			}
+			
+			private function enableVideo(isEnable:Boolean):void
+			{
+				if(isEnable)
+				{
+					localvideo=new Video(160,120);
+					outstream.attachCamera(cam);
+					localvideo.attachCamera(cam);
+					localvideodisplay.addChild(localvideo);
+				}
+				else
+				{
+					outstream.attachCamera(null);
+					localvideo.attachCamera(null);
+					localvideodisplay.removeChild(localvideo);
+				}
+				//Alert.show("Video is "+(isEnable ? "enbaled" : "disabled"));
+			}
+			
+			private function enableAudio(isEnable:Boolean):void
+			{
+				if(isEnable)
+				{
+					outstream.attachAudio(mic);
+				}
+				else
+				{
+					outstream.attachAudio(null);
+				}
+				//Alert.show("Audio is "+(isEnable ? "enbaled" : "disabled"));
+			}
+			
+			private function micVolumeChange():void
+			{
+				micst = new SoundTransform(micvolume.value/100);
+				mic.soundTransform = micst;
+				mic.gain = micvolume.value;
+			}
+			
+			private function speakerVolumeChange():void
+			{	
+				speakerst = new SoundTransform(speakervolume.value/100);
+				instream.soundTransform = speakerst;
+			}	
 			
 		]]>
 	</fx:Script>
@@ -652,7 +741,8 @@
 			<s:Button right="50" bottom="15" width="75" height="30" label="拒绝" click="cancelInvite()" fontSize="16"/>
 			<s:Button left="50" bottom="15" width="75" height="30" label="接受" click="acceptInvite()" fontSize="16"/>
 		</s:Panel>
-		<s:Group id="_talk" includeIn="Talk" width="100%" height="100%" bottom="0">
+		<s:Group id="_talk" includeIn="Talk,Setting" width="100%"
+				 top="0" bottom="0" enabled.Setting="false" height="100%" enabled.Talk="true">
 			<s:VGroup width="390" left="10" top="10" horizontalAlign="center"  gap="10" bottom="10">
 				<s:TextArea id="info" left="5" top="275" width="390" height="238" editable="false"
 							paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5"/>
@@ -663,7 +753,11 @@
 			</s:VGroup>
 			<s:VGroup right="10" top="10" bottom="10" width="160" gap="14" horizontalAlign="center">
 				<s:VideoDisplay id="remotevideodisplay"  width="160" height="120"/>
-				<s:Button id="hangup" width="75" height="30" label="挂断" click="cancelInvite()"/>
+				<s:HGroup gap.Setting="20"
+						  gap.Talk="20">
+					<s:Button id="hangup" width="70" height="30" label="挂断" click="cancelInvite()"/>
+					<s:Button width="70" height="30" label="设置" click="startSetting()"/>
+				</s:HGroup>
 				<s:VideoDisplay id="localvideodisplay" width="160" height="120"/>
 			</s:VGroup>	
 		</s:Group>
@@ -671,6 +765,43 @@
 			<s:Label id="callingtext" left="15" right="15" top="15" height="50" fontSize="16"
 					 textAlign="center" verticalAlign="middle"/>
 			<s:Button label="取消" click="cancelInvite()" fontSize="16" y="50" bottom="15" width="75" height="30" horizontalCenter="0"/>
+		</s:Panel>
+		<s:Panel id="_setting" includeIn="Setting" width="250" height="250" borderAlpha="1.0"
+				 fontSize="14" horizontalCenter="0" title="设置" verticalCenter="0">
+			<s:VGroup width="100%" height="100%" gap="10" horizontalAlign="center"
+					  verticalAlign="middle">
+				<s:HGroup height="30" gap="20" horizontalAlign="center" verticalAlign="middle">
+					<s:Label text="视频" textAlign="center" verticalAlign="middle"/>
+					<s:HGroup horizontalAlign="center" textAlign="center" verticalAlign="middle">
+						<s:RadioButton id="videoenable" groupName="video" selected="true" click="settingVideo(true)"/>
+						<s:Label text="开启" textAlign="center" verticalAlign="middle"/>
+					</s:HGroup>
+					<s:HGroup horizontalAlign="center" verticalAlign="middle">
+						<s:RadioButton id="videodisable" groupName="video" selected="false" click="settingVideo(false)"/>
+						<s:Label text="关闭" textAlign="center" verticalAlign="middle"/>
+					</s:HGroup>
+				</s:HGroup>
+				<s:HGroup height="30" gap="20" horizontalAlign="center" verticalAlign="middle">
+					<s:Label text="音频" textAlign="center" verticalAlign="middle"/>
+					<s:HGroup horizontalAlign="center" textAlign="center" verticalAlign="middle">
+						<s:RadioButton id="audioenable" groupName="audio" selected="true" click="settingAudio(true)"/>
+						<s:Label text="开启" textAlign="center" verticalAlign="middle"/>
+					</s:HGroup>
+					<s:HGroup horizontalAlign="center" verticalAlign="middle">
+						<s:RadioButton id="audiodisable" groupName="audio" selected="false" click="settingAudio(false)"/>
+						<s:Label text="关闭" textAlign="center" verticalAlign="middle"/>
+					</s:HGroup>
+				</s:HGroup>
+				<s:HGroup height="30" gap="20" horizontalAlign="center" verticalAlign="middle">
+					<s:Label text="麦克风音量" textAlign="center" verticalAlign="middle"/>
+					<s:HSlider id="micvolume" minimum="0" maximum="100" value="80" width="124" height="12" changeEnd="micVolumeChange()"/>
+				</s:HGroup>
+				<s:HGroup height="30" gap="20" horizontalAlign="center" verticalAlign="middle">
+					<s:Label text="扬声器音量" textAlign="center" verticalAlign="middle"/>
+					<s:HSlider id="speakervolume" minimum="0" maximum="100" value="80" width="124" height="12" changeEnd="speakerVolumeChange()"/>
+				</s:HGroup>
+				<s:Button width="75" height="30" label="完成" click="endSetting()"/>
+			</s:VGroup>		
 		</s:Panel>
 	</s:Panel>
 </s:Application>
