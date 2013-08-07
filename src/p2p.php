@@ -66,19 +66,6 @@ class p2p
 		return $db->query($query) ? 1 : 0;
 	}
 
-	// public function addFriend( $userid, $friendid )
-	// {
-	// 	/**
-	// 	 *@return int  //数据库操作的进行状态
-	// 	 *0 => 好友添加失败
-	// 	 *1 => 好友添加成功
-	// 	 */
-	// 	$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
-	// 	$query = "insert into relation (userid,friendid) values ('$userid','$friendid')";
-
-	// 	return $db->query($query) ? 1 : 0;
-	// }
-
 	public function setUserData( $userid, $peerid, $status )
 	{
 		/**
@@ -178,5 +165,13 @@ class p2p
 		}
 
 		return $status;
+	}
+
+	public function recordText( $sourceid, $targetid, $text )
+	{
+		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$query = "insert into text (sourceid,targetid,text) values ('$sourceid','$targetid','$text')";
+
+		return $db->query($query) ? 1 : 0;
 	}
 }
