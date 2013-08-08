@@ -9,6 +9,8 @@
 		<s:State name="Talk"/>
 		<s:State name="Register"/>
 		<s:State name="Setting"/>
+		<s:State name="Upload"/>
+		<s:State name="Download"/>
 	</s:states>
 	<fx:Declarations>
 		<mx:StringValidator id="_username" property="text" required="true" minLength="6" maxLength="16" requiredFieldError="用户名不能为空" tooShortError="用户名长度必须大于6个字符" tooLongError="用户名长度必须小于16个字符" />
@@ -21,6 +23,7 @@
 			<s:method name="getUserData" result="getUserData_resultHandler(event)" />
 			<s:method name="addFriend" result="addFriend_resultHandler(event)" />
 			<s:method name="recordText" result="recordText_resultHandler(event)" />
+			<s:method name="uploadFile" result="uploadFile_resultHandler(event)" />
 		</s:RemoteObject>
 		<s:RadioButtonGroup id="audio"/>
 		<s:RadioButtonGroup id="video"/>
@@ -59,6 +62,7 @@
 			private var cam:Camera;
 			private var micst:SoundTransform;
 			private var speakerst:SoundTransform;
+			private var file:FileReference;
 			
 			//网络流
 			private var mystream:NetStream;  //本地流，用于广播PeerID
@@ -95,8 +99,64 @@
 				{
 					cam.setQuality(0,90);
 				}
+				file = new FileReference();
+				file.addEventListener(Event.SELECT,selectFile);
+				file.addEventListener(ProgressEvent.PROGRESS,showUploadProgress);
+				file.addEventListener(Event.COMPLETE,uploadFileComplete);
+				file.addEventListener(Event.CANCEL,cancelFileUpload);
+				//file.addEventListener(IOErrorEvent.IO_ERROR,upload_errorHandler);
 			}
 			
+			private function startUpload():void
+			{
+				currentState = "Upload";
+				file.browse();
+			}
+			
+			private function cancelUpload():void
+			{
+				file.cancel();
+			}
+			
+			private function downloadFile():void
+			{
+				
+			}
+			
+			private function selectFile(event:Event):void
+			{
+				currentState = "Upload";
+				uploadtext.text = "请选择你要传输的文件";
+				file.load();
+			}
+			
+			private function uploadFileComplete(event:Event):void
+			{
+				service.uploadFile.send(localid,remoteid,file.name,file.type,file.data);
+				currentState = "Talk";
+				Alert.show("文件传输已完成");
+			}
+			
+			private function showUploadProgress(event:ProgressEvent):void
+			{
+				uploadtext.text = "已完成 : "+Math.round(100*event.bytesLoaded/event.bytesTotal)+"%";
+			}
+			
+			private function cancelFileUpload(event:Event):void
+			{
+				currentState = "Talk";
+				Alert.show("文件传输已取消");
+			}
+			
+			private function upload_errorHandler(event:IOErrorEvent):void
+			{
+				Alert.show(event.text);
+			}
+			
+			private function uploadFile_resultHandler(event:ResultEvent):void
+			{
+				Alert.show(event.message.body.toString());
+			}
 			
 			//跳转至注册页面
 			private function startRegister():void
@@ -729,7 +789,7 @@
 			{	
 				speakerst = new SoundTransform(speakervolume.value/100);
 				instream.soundTransform = speakerst;
-			}	
+			}
 			
 		]]>
 	</fx:Script>
@@ -775,14 +835,18 @@
 			<s:Button right="50" bottom="15" width="75" height="30" label="拒绝" click="cancelInvite()" fontSize="16"/>
 			<s:Button left="50" bottom="15" width="75" height="30" label="接受" click="acceptInvite()" fontSize="16"/>
 		</s:Panel>
-		<s:Group id="_talk" includeIn="Talk,Setting" width="100%"
-				 top="0" bottom="0" enabled.Setting="false" height="100%" enabled.Talk="true">
+		<s:Group id="_talk" includeIn="Talk,Setting,Upload,Download" width="100%"
+				 top="0" bottom="0" enabled.Setting="false" enabled.Upload="false" enabled.Download="false" height="100%" enabled.Talk="true">
 			<s:VGroup width="390" left="10" top="10" horizontalAlign="center"  gap="10" bottom="10">
 				<s:TextArea id="info" left="5" top="275" width="390" height="238" editable="false"
-							paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5"/>
+							paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5"
+							height.Talk="248"/>
 				<s:HGroup width="100%" left="5" top="65" verticalAlign="middle" gap="10" bottom="0">
-					<s:TextInput id="message" width="310" height="50" borderVisible="true" enter="sendMessage()"/>
-					<s:Button id="sendmessage" label="发送" height="50" click="sendMessage()"/>
+					<s:TextInput id="message" width="310" height="40" borderVisible="true"
+								 enter="sendMessage()"
+								 width.Talk="230"/>
+					<s:Button id="sendmessage" label="发送" click="sendMessage()" height="40"/>
+					<s:Button id="uploadfile" label="传文件" click="startUpload()" height="40"/>
 				</s:HGroup>
 			</s:VGroup>
 			<s:VGroup right="10" top="10" bottom="10" width="160" gap="14" horizontalAlign="center">
@@ -835,6 +899,11 @@
 				</s:HGroup>
 				<s:Button width="75" height="30" label="完成" click="endSetting()"/>
 			</s:VGroup>		
+		</s:Panel>
+		<s:Panel id="_upload" includeIn="Upload" width="200" horizontalCenter="0" title="上传"
+				 verticalCenter="0">
+			<s:Label id="uploadtext" top="10" width="150" height="30" horizontalCenter="0"/>
+			<s:Button bottom="10" width="75" height="30" label="取消" horizontalCenter="0" click="cancelUpload()"/>
 		</s:Panel>
 	</s:Panel>
 </s:Application>

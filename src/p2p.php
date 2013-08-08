@@ -174,4 +174,19 @@ class p2p
 
 		return $db->query($query) ? 1 : 0;
 	}
+
+	public function uploadFile( $sourceid, $targetid, $originname, $type, $data )
+	{
+		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+
+		$dir = "../upload/";
+		$name = date("YmdHis").$type;
+		$path = $dir.$name;
+		if( !file_exists( $path ) )
+		{
+			$handle = fopen( $path, 'w' );
+			fclose($handle);	
+		}
+		file_put_contents( $path, $data->data );
+	}
 }
