@@ -143,32 +143,37 @@ class p2p
 			//指定的好友就是申请者本人
 			if( $friendid == $userid )
 			{
-				$status = 3;
+				return 3;
 			}
 			else
 			{
 				$query = "insert into relation (userid,friendid) values ('$userid','$friendid')";
 				if( $db->query($query) )
 				{
-					$status = 1;
+					return 1;
 				}
 				else
 				{
-					$status = 0;
+					return 0;
 				}
 			}
 		}
 		//指定名称的好友不存在
 		else
 		{
-			$status = 2;
+			return 2;
 		}
-
-		return $status;
 	}
 
 	public function recordText( $sourceid, $targetid, $text )
 	{
+		/**
+		 *@param string text  //文字流内容
+		 *
+		 *@return int  //返回状态
+		 *0 => 记录失败
+		 *1 => 记录成功
+		 */
 		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "insert into text (sourceid,targetid,text) values ('$sourceid','$targetid','$text')";
 
@@ -177,16 +182,94 @@ class p2p
 
 	public function uploadFile( $sourceid, $targetid, $originname, $type, $data )
 	{
+		/**
+		 *@param string originname  //上传方本地文件的文件名
+		 *@param string type  //上传文件的格式(.xxx)
+		 *@param object data  //上传文件对象(二进制内容：$data->data)
+		 *@param string dir  //服务器上传文件夹的路径
+		 *@param string path  //服务器上传文件的路径
+		 *@param string name  //服务器端存储文件的文件名(为避免重名以服务器当前时间对上传文件进行重命名，格式：YYYYMMDDHHMMSS.xxx)
+		 *@param object handler  //指向上传文件的指针，用于对上传文件进行操作
+		 *
+		 *@return int  //返回状态
+		 *0 => 文件写入失败
+		 *1 => 文件写入成功，数据库操作成功
+		 *2 => 文件写入成功，数据库操作失败
+		 */
 		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
 
 		$dir = "../upload/";
+		date_default_timezone_set('Asia/Shanghai');
 		$name = date("YmdHis").$type;
 		$path = $dir.$name;
 		if( !file_exists( $path ) )
 		{
 			$handle = fopen( $path, 'w' );
-			fclose($handle);	
+			fclose($handle);
 		}
-		file_put_contents( $path, $data->data );
+		//将二进制数据写入文件成功
+		if( file_put_contents( $path, $data->data ) )
+		{
+			$query = "insert into file (sourceid, targetid, originname, storename) values ('$sourceid','$targetid','$originname','$name')";
+			if( $db->query($query) )
+			{
+				return 1;
+			}
+			else
+			{
+				return 2;
+			}
+		}
+		//将二进制数据写入文件失败
+		else
+		{
+			return 0;
+		}
+	}
+
+	public function downloadFile( $userid, $name )
+	{
+		/**
+		 *@param string name  //上传者本地文件的原名
+		 *@param string url  //提供给接受者的待下载文件的URL（绝对地址）
+		 *@param int id  //本次上传文件在数据库中存储记录的唯一标识
+		 *
+		 *@return object file  //返回内容
+		 *0 => 记录获取失败
+		 *1 => 记录获取成功
+		 */
+		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		//只取最近第一条待传文件记录
+		$query = "select id,originname,storename from file where targetid = '$userid' and originname = '$name' and status = '0' order by id desc limit 1";
+
+		if( $result = $db->query($query)->fetch_assoc() )
+		{
+			$name = $result['originname'];
+			$url = "http://172.22.224.173/upload/".$result['storename'];
+			$status = 1;
+			$id = $result['id'];
+		}
+		else
+		{
+			$name = "";
+			$url = "";
+			$status = 0;
+			$id = 0;
+		}
+		$file->id = $id;
+		$file->url = $url;
+		$file->name = $name;
+		$file->status = $status;
+
+		return $file;
+	}	
+
+	public function setFileDownloadData( $id )
+	{
+		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		//更新数据库中该条文件记录状态为已传输
+		$query = "update file set status = '1' where id = '$id'";
+
+		$db->query($query) ? 1 : 0;
 	}
 }

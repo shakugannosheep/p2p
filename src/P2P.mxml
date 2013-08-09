@@ -15,6 +15,7 @@
 	<fx:Declarations>
 		<mx:StringValidator id="_username" property="text" required="true" minLength="6" maxLength="16" requiredFieldError="用户名不能为空" tooShortError="用户名长度必须大于6个字符" tooLongError="用户名长度必须小于16个字符" />
 		<mx:StringValidator id="_password" property="text" required="true" minLength="8" maxLength="20" requiredFieldError="密码不能为空" tooShortError="密码长度必须大于8个字符" tooLongError="密码长度必须小于20个字符" />
+		<s:DateTimeFormatter id="datetimeformatter" dateTimePattern="yyyyMMddHHmmss" />
 		<s:RemoteObject id="service" destination="amfphp" source="p2p" fault="service_faultHandler(event)">
 			<s:method name="validate" result="validate_resultHandler(event)" />
 			<s:method name="register" result="register_resultHandler(event)" />
@@ -24,6 +25,8 @@
 			<s:method name="addFriend" result="addFriend_resultHandler(event)" />
 			<s:method name="recordText" result="recordText_resultHandler(event)" />
 			<s:method name="uploadFile" result="uploadFile_resultHandler(event)" />
+			<s:method name="downloadFile" result="downloadFile_resultHandler(event)" />
+			<s:method name="setDownloadFileData" result="setDownloadFileData_resultHandler(event)" />
 		</s:RemoteObject>
 		<s:RadioButtonGroup id="audio"/>
 		<s:RadioButtonGroup id="video"/>
@@ -39,6 +42,8 @@
 			import mx.rpc.events.FaultEvent;
 			import mx.rpc.events.ResultEvent;
 			import mx.validators.Validator;
+			
+			import spark.formatters.DateTimeFormatter;
 
 			//Circus服务器域名及开发者ID
 			private var adobeurl:String = "rtmfp://stratus.adobe.com/1710124cbf69e3f25b780c13-d6cbf2cb35a1";
@@ -53,6 +58,7 @@
 			private var localpeerid:String;  //邀请方唯一PeerID。成功登录后从Circus服务器获取
 			private var localusername:String;  //唯一用户名。用于各种提示上的内容显示
 			private var remotepeerid:String;  //被邀请方唯一PeerID。成功登录后从服务器获取
+			private var downloadrequest:URLRequest;
 			
 			//用于绑定好友列表并向其提供数据
 			[Bindable]
@@ -62,7 +68,10 @@
 			private var cam:Camera;
 			private var micst:SoundTransform;
 			private var speakerst:SoundTransform;
-			private var file:FileReference;
+			private var uploadfile:FileReference;
+			private var downloadfile:FileReference;
+			private var downloadfilename:String;
+			private var downloadfileid:Number;
 			
 			//网络流
 			private var mystream:NetStream;  //本地流，用于广播PeerID
@@ -99,42 +108,38 @@
 				{
 					cam.setQuality(0,90);
 				}
-				file = new FileReference();
-				file.addEventListener(Event.SELECT,selectFile);
-				file.addEventListener(ProgressEvent.PROGRESS,showUploadProgress);
-				file.addEventListener(Event.COMPLETE,uploadFileComplete);
-				file.addEventListener(Event.CANCEL,cancelFileUpload);
+				
 				//file.addEventListener(IOErrorEvent.IO_ERROR,upload_errorHandler);
 			}
 			
 			private function startUpload():void
 			{
 				currentState = "Upload";
-				file.browse();
+				uploadfile = new FileReference();
+				uploadfile.addEventListener(Event.SELECT,selectUploadFile);
+				uploadfile.addEventListener(ProgressEvent.PROGRESS,showUploadProgress);
+				uploadfile.addEventListener(Event.COMPLETE,uploadFileComplete);
+				uploadfile.addEventListener(Event.CANCEL,cancelFileUpload);
+				uploadfile.browse();
 			}
 			
 			private function cancelUpload():void
 			{
-				file.cancel();
+				uploadfile.cancel();
 			}
 			
-			private function downloadFile():void
-			{
-				
-			}
-			
-			private function selectFile(event:Event):void
+			private function selectUploadFile(event:Event):void
 			{
 				currentState = "Upload";
 				uploadtext.text = "请选择你要传输的文件";
-				file.load();
+				uploadfile.load();
 			}
 			
 			private function uploadFileComplete(event:Event):void
 			{
-				service.uploadFile.send(localid,remoteid,file.name,file.type,file.data);
 				currentState = "Talk";
-				Alert.show("文件传输已完成");
+				service.uploadFile.send(localid,remoteid,uploadfile.name,uploadfile.type,uploadfile.data);
+//				Alert.show("文件传输已完成");
 			}
 			
 			private function showUploadProgress(event:ProgressEvent):void
@@ -145,17 +150,117 @@
 			private function cancelFileUpload(event:Event):void
 			{
 				currentState = "Talk";
-				Alert.show("文件传输已取消");
+				uploadtext.text = "文件传输已取消";
 			}
 			
-			private function upload_errorHandler(event:IOErrorEvent):void
-			{
-				Alert.show(event.text);
-			}
+//			private function upload_errorHandler(event:IOErrorEvent):void
+//			{
+//				Alert.show(event.text);
+//			}
 			
 			private function uploadFile_resultHandler(event:ResultEvent):void
 			{
-				Alert.show(event.message.body.toString());
+				var result:Number = event.message.body.toString();
+				switch( result )
+				{
+					case 0:
+						Alert.show("文件上传失败","服务器错误");
+						break;
+					case 1:
+						Alert.show("文件上传成功");
+						currentState = "Talk";
+						outstream.send("getFile",uploadfile.name);
+						break;
+					case 2:
+						Alert.show("数据库添加相关数据失败","服务器错误");
+						break;
+				}
+			}
+			
+			private function startDownload():void
+			{
+				currentState = "Download";
+				downloadfile = new FileReference();
+				downloadfile.addEventListener(Event.OPEN,startDownloadFile);
+				downloadfile.addEventListener(Event.SELECT,selectDownloadFile);
+				downloadfile.addEventListener(ProgressEvent.PROGRESS,showDownloadProgress);
+				downloadfile.addEventListener(Event.COMPLETE,downloadFileComplete);
+				downloadfile.addEventListener(Event.CANCEL,cancelFileDownload);
+				downloadfile.download(downloadrequest,downloadfilename);
+			}
+			
+			//开始下载
+			private function startDownloadFile(event:Event):void
+			{
+				downloadtext.text = "开始下载";
+			}
+			
+			//下载取消
+			private function cancelDownload():void
+			{
+				currentState = "Talk";
+				downloadfile.cancel();
+			}
+			
+			//确定下载文件的存储位置
+			private function selectDownloadFile(event:Event):void
+			{
+
+			}
+			
+			//成功下载文件
+			private function downloadFileComplete(event:Event):void
+			{
+				Alert.show("文件传输已完成");
+				currentState = "Talk";
+				service.setFileDownloadData.send(downloadfileid);
+			}
+			
+			private function setDownloadFileData_resultHandler(event:ResultEvent):void
+			{
+				var result:Number = event.message.body.toString();
+				switch(result)
+				{
+					case 0:
+						Alert.show("文件传输数据更新错误","服务器错误");
+						break;
+					case 1:
+						break;
+					default:
+						Alert.show("服务器返回值非法","服务器错误");
+						break;
+				}
+			}
+			
+			private function showDownloadProgress(event:ProgressEvent):void
+			{
+				downloadtext.text = "已完成 : "+Math.round(100*event.bytesLoaded/event.bytesTotal)+"%";
+			}
+			
+			private function cancelFileDownload(event:Event):void
+			{
+				downloadtext.text = "文件传输已取消";
+			}
+			
+			private function downloadFile_resultHandler(event:ResultEvent):void
+			{
+				var result:Object = event.message.body;
+				var status:Number = result.status.toString();
+				downloadfilename = result.name.toString();
+				downloadfileid = result.id.toString();
+				//Alert.show(result.url.toString());
+				//Alert.show(result.name.toString());
+				switch(status)
+				{
+					case 0:
+						Alert.show("获取文件失败","服务器错误");
+						break;
+					case 1:
+						downloadrequest = new URLRequest(result.url.toString());
+						//Alert.show("Get URL Successful");
+						//downloadfile.save(downloadfile.data,downloadfilename);
+						break;
+				}
 			}
 			
 			//跳转至注册页面
@@ -412,6 +517,12 @@
 					{
 						stopTalk();
 					}
+					i.getFile=function(name:String):void
+					{
+						currentState = "Download";
+						downloadtext.text = "对方正在发送'"+name+"'，是否接收？";
+						service.downloadFile.send(localid,name);
+					}
 					instream.client=i;
 					
 					return true;
@@ -515,10 +626,10 @@
 					{
 						//更新用户状态
 						service.setUserData.send(localid,localpeerid,3);
-						if(currentState == "Talk" )
-						{
-							Alert.show("与"+name+"连接成功\n");
-						}
+//						if(currentState == "Talk" )
+//						{
+//							Alert.show("与"+name+"连接成功\n");
+//						}
 						_calling.visible = false;
 						_talk.enabled = true;
 						currentState = "Talk";
@@ -531,6 +642,13 @@
 					i.connectEnd=function():void
 					{
 						stopTalk();
+					}
+					//监听对方传输的文件
+					i.getFile=function(name:String):void
+					{
+						currentState = "Download";
+						downloadtext.text = "对方正在发送'"+name+"'，是否接收？";
+						service.downloadFile.send(localid,name);
 					}
 					instream.client=i;
 					service.setUserData.send(localid,localpeerid,2);
@@ -556,12 +674,12 @@
 				stopTalk();
 			}
 			
+			//开始将音频流内容录制到FMS时调用
 			private function startRecord():void
 			{
 				recordstream = new NetStream(recordNetConnection);
 				recordstream.attachAudio(mic);
-				var date:Date = new Date();
-				var name:String = date.getFullYear().toPrecision(4)+(date.getMonth() + 1).toPrecision(2)+date.getDate().toPrecision(2)+date.getHours().toPrecision(2)+date.getMinutes().toPrecision(2)+date.getSeconds().toPrecision(2)+"_"+localusername;
+				var name:String = datetimeformatter.format(new Date().toString())+"_"+localusername;
 				recordstream.publish(name,"record");
 			}
 
@@ -824,8 +942,7 @@
 				<s:HGroup width="100%" height="40" gap="10" horizontalAlign="center"
 						  verticalAlign="middle">
 					<s:DropDownList id="friend" width="200" height="30" dataProvider="{friendlist}" labelField="name" prompt="请选择想要聊天的在线好友"/>
-					<s:Button id="invite" height="30" label="邀请" click="startInvite()"
-							  width.Invite="75"/>
+					<s:Button id="invite" height="30" label="邀请" click="startInvite()" width="75"/>
 				</s:HGroup>
 			</s:VGroup>
 		</s:Group>	
@@ -838,15 +955,12 @@
 		<s:Group id="_talk" includeIn="Talk,Setting,Upload,Download" width="100%"
 				 top="0" bottom="0" enabled.Setting="false" enabled.Upload="false" enabled.Download="false" height="100%" enabled.Talk="true">
 			<s:VGroup width="390" left="10" top="10" horizontalAlign="center"  gap="10" bottom="10">
-				<s:TextArea id="info" left="5" top="275" width="390" height="238" editable="false"
-							paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5"
-							height.Talk="248"/>
+				<s:TextArea id="info" left="5" top="275" width="390" height="248" editable="false"
+							paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5"/>
 				<s:HGroup width="100%" left="5" top="65" verticalAlign="middle" gap="10" bottom="0">
-					<s:TextInput id="message" width="310" height="40" borderVisible="true"
-								 enter="sendMessage()"
-								 width.Talk="230"/>
+					<s:TextInput id="message" width="230" height="40" borderVisible="true" enter="sendMessage()"/>
 					<s:Button id="sendmessage" label="发送" click="sendMessage()" height="40"/>
-					<s:Button id="uploadfile" label="传文件" click="startUpload()" height="40"/>
+					<s:Button id="uploadfilebutton" label="传文件" click="startUpload()" height="40"/>
 				</s:HGroup>
 			</s:VGroup>
 			<s:VGroup right="10" top="10" bottom="10" width="160" gap="14" horizontalAlign="center">
@@ -902,8 +1016,16 @@
 		</s:Panel>
 		<s:Panel id="_upload" includeIn="Upload" width="200" horizontalCenter="0" title="上传"
 				 verticalCenter="0">
-			<s:Label id="uploadtext" top="10" width="150" height="30" horizontalCenter="0"/>
+			<s:Label id="uploadtext" top="10" width="150" height="30" horizontalCenter="0"
+					 textAlign="center" verticalAlign="middle" text="请选择你要传输的文件"/>
 			<s:Button bottom="10" width="75" height="30" label="取消" horizontalCenter="0" click="cancelUpload()"/>
+		</s:Panel>
+		<s:Panel id="_download" includeIn="Download" width="250" height="150" horizontalCenter="0"
+				 title="下载" verticalCenter="0">
+			<s:Label id="downloadtext" left="10" right="10" top="10" height="55" textAlign="center"
+					 verticalAlign="middle"/>
+			<s:Button right="30" bottom="15" width="80" height="25" label="取消" click="cancelDownload()"/>
+			<s:Button left="30" bottom="15" width="80" height="25" label="接收" click="startDownload()"/>
 		</s:Panel>
 	</s:Panel>
 </s:Application>
