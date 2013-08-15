@@ -7,6 +7,7 @@
  */
 class p2p
 {
+	private $url = '172.22.236.69';
 	/**
 	 *@param object $db  //数据库连接实例
 	 *@param string $query  //SQL
@@ -25,7 +26,7 @@ class p2p
 		 *@param object userinfo  //用户数据，包括userid和操作执行状态
 		 *@return object $userinfo
 		 */
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "select * from user where username = '$username'";
 
 		//判断符合条件的用户名是否存在，并将相关记录赋值
@@ -60,7 +61,7 @@ class p2p
 		 *1 => 注册成功
 		 */
 		$password = md5($password);
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "insert into user (username,password) values ('$username','$password')";
 
 		return $db->query($query) ? 1 : 0;
@@ -82,7 +83,7 @@ class p2p
 		 *0 => 更新失败
 		 *1 => 更新成功
 		 */
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "update user set peerid = '$peerid', status = '$status' where id = '$userid'";	
 
 		return $db->query($query) ? 1 : 0;
@@ -95,7 +96,7 @@ class p2p
 		 *
 		 *@return array friendlist
 		 */
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "select user.id,user.username from relation,user where relation.friendid = user.id and relation.userid = '$userid'";
 
 		$friendlist = array();
@@ -117,7 +118,7 @@ class p2p
 		 *
 		 *@return array friendlist
 		 */
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "select peerid from user where id = '$userid' and status = '1'";
 		$result = $db->query($query)->fetch_assoc();
 		return $result ? $result['peerid'] : "";
@@ -134,7 +135,7 @@ class p2p
 		 *2 => 未找到指定名字的好友
 		 *3 => 添加自己为好友
 		 */
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "select id from user where username = '$friendname'";
 		//指定名称的好友存在
 		if( $result = $db->query($query)->fetch_assoc() )
@@ -174,7 +175,7 @@ class p2p
 		 *0 => 记录失败
 		 *1 => 记录成功
 		 */
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		$query = "insert into text (sourceid,targetid,text) values ('$sourceid','$targetid','$text')";
 
 		return $db->query($query) ? 1 : 0;
@@ -196,7 +197,7 @@ class p2p
 		 *1 => 文件写入成功，数据库操作成功
 		 *2 => 文件写入成功，数据库操作失败
 		 */
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 
 		$dir = "../upload/";
 		date_default_timezone_set('Asia/Shanghai');
@@ -238,7 +239,7 @@ class p2p
 		 *0 => 记录获取失败
 		 *1 => 记录获取成功
 		 */
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		//只取最近第一条待传文件记录
 		$query = "select id,originname,storename from file where targetid = '$userid' and originname = '$name' and status = '0' order by id desc limit 1";
 
@@ -266,7 +267,7 @@ class p2p
 
 	public function setFileDownloadData( $id )
 	{
-		$db = new mysqli('172.22.224.173','wangyang','19911016','p2p') or die("Database Connect Error");
+		$db = new mysqli($url,'wangyang','19911016','p2p') or die("Database Connect Error");
 		//更新数据库中该条文件记录状态为已传输
 		$query = "update file set status = '1' where id = '$id'";
 

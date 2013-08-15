@@ -46,9 +46,10 @@
 			import spark.formatters.DateTimeFormatter;
 
 			//Circus服务器域名及开发者ID
-			private var adobeurl:String = "rtmfp://stratus.adobe.com/1710124cbf69e3f25b780c13-d6cbf2cb35a1";
-			private var localurl:String = "rtmfp://172.22.224.173:1935";
-			private var recordurl:String = "rtmp://192.168.219.129/myrecord";
+//			private var adobeurl:String = "rtmfp://stratus.adobe.com/1710124cbf69e3f25b780c13-d6cbf2cb35a1";
+			private var serverurl:String = "172.22.224.175"
+			private var localurl:String = "rtmfp://"+serverurl+"/multicast";
+			private var recordurl:String = "rtmp://"+serverurl+"/myrecord";
 			private var p2pNetConnection:NetConnection;
 			private var recordNetConnection:NetConnection;
 			
@@ -94,7 +95,7 @@
 				_username.source = username;
 				_password.source = password;
 				mic = Microphone.getMicrophone();
-//				mic.setSilenceLevel(0);
+				mic.setSilenceLevel(0);
 				if( !mic )
 				{
 					Alert.show("未检测到麦克风，无法使用音频通话功能","设备错误");
@@ -108,8 +109,6 @@
 				{
 					cam.setQuality(0,90);
 				}
-				
-				//file.addEventListener(IOErrorEvent.IO_ERROR,upload_errorHandler);
 			}
 			
 			private function startUpload():void
@@ -356,6 +355,7 @@
 				switch(result)
 				{
 					case 0:
+						Alert.show("用户连接成功");
 						localid = object.userid.toString();
 						connect();
 						break;
@@ -437,6 +437,7 @@
 			//与Record服务器之间连接的事件处理
 			private function recordNetConnection_statusHandler(event:NetStatusEvent):void
 			{
+				Alert.show("Record:"+event.info.code);
 				switch (event.info.code)
 				{
 					//链接成功后的初始化
@@ -445,7 +446,7 @@
 					case "NetStream.Connect.Success":
 						break;
 					default:
-						//Alert.show(event.info.code);
+//						Alert.show(event.info.code);
 						break;
 				}
 			}
@@ -453,6 +454,7 @@
 			//与Circus服务器之间连接的事件处理
 			private function p2pNetConnection_statusHandler(event:NetStatusEvent):void
 			{
+				Alert.show("P2P:"+event.info.code);
 				switch (event.info.code)
 				{
 					//链接成功后的初始化
