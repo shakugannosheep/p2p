@@ -437,7 +437,7 @@
 			//与Record服务器之间连接的事件处理
 			private function recordNetConnection_statusHandler(event:NetStatusEvent):void
 			{
-				Alert.show("Record:"+event.info.code);
+//				Alert.show("Record:"+event.info.code);
 				switch (event.info.code)
 				{
 					//链接成功后的初始化
@@ -454,7 +454,7 @@
 			//与Circus服务器之间连接的事件处理
 			private function p2pNetConnection_statusHandler(event:NetStatusEvent):void
 			{
-				Alert.show("P2P:"+event.info.code);
+				//Alert.show("P2P:"+event.info.code);
 				switch (event.info.code)
 				{
 					//链接成功后的初始化
@@ -465,6 +465,15 @@
 						initMyStream();
 						break;
 					case "NetStream.Connect.Success":
+						break;
+					case "NetStream.Connect.Closed":
+						//回复登陆后状态重新进行等待或邀请
+						Alert.show("链接已断开");
+						currentState = "Invite";
+						break;
+					case "NetConnection.Connect.NetworkChange":
+						Alert.show("网络已断开，请检查网络");
+						currentState = "Invite";
 						break;
 					default:
 						//Alert.show(event.info.code);
@@ -688,9 +697,7 @@
 			//会话结束时调用
 			private function stopTalk():void
 			{
-				//回复登陆后状态重新进行等待或邀请
-				Alert.show("链接已断开");
-				currentState = "Invite";
+				
 				
 				//初始化所有网络流和视频窗口
 				if(instream)

@@ -36,5 +36,10 @@
 			<type>2</type>
 			<location>E:/wamp/www/P2P</location>
 		</link>
+		<link>
+			<name>bin-release3</name>
+			<type>2</type>
+			<location>E:/P2P</location>
+		</link>
 	</linkedResources>
 </projectDescription>
