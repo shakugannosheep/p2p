@@ -11,6 +11,7 @@
 		<s:State name="Setting"/>
 		<s:State name="Upload"/>
 		<s:State name="Download"/>
+		<s:State name="View"/>
 	</s:states>
 	<fx:Declarations>
 		<mx:StringValidator id="_username" property="text" required="true" minLength="6" maxLength="16" requiredFieldError="用户名不能为空" tooShortError="用户名长度必须大于6个字符" tooLongError="用户名长度必须小于16个字符" />
@@ -27,12 +28,15 @@
 			<s:method name="uploadFile" result="uploadFile_resultHandler(event)" />
 			<s:method name="downloadFile" result="downloadFile_resultHandler(event)" />
 			<s:method name="setDownloadFileData" result="setDownloadFileData_resultHandler(event)" />
+			<s:method name="getUserText" result="getUserText_resultHandler(event)" />
 		</s:RemoteObject>
 		<s:RadioButtonGroup id="audio"/>
 		<s:RadioButtonGroup id="video"/>
 	</fx:Declarations>
 	<fx:Script>
 		<![CDATA[
+			import flashx.textLayout.events.StatusChangeEvent;
+			
 			import mx.binding.utils.ChangeWatcher;
 			import mx.collections.ArrayCollection;
 			import mx.controls.Alert;
@@ -95,20 +99,37 @@
 				_username.source = username;
 				_password.source = password;
 				mic = Microphone.getMicrophone();
-				mic.setSilenceLevel(0);
-				if( !mic )
-				{
-					Alert.show("未检测到麦克风，无法使用音频通话功能","设备错误");
-				}
+				mic.setLoopBack(true);
+				mic.setLoopBack(false);
+				mic.addEventListener(StatusEvent.STATUS,initMicrophone);
 				cam = Camera.getCamera();
-				if( !cam )
+				cam.addEventListener(StatusEvent.STATUS,initCamera);
+			}
+			
+			private function initMicrophone(event:StatusEvent):void
+			{
+				if(event.code=="Microphone.Unmuted")
 				{
-					Alert.show("未检测到摄像头，无法使用视频通话功能","设备错误");
+					mic.setSilenceLevel(20);
 				}
 				else
 				{
-					cam.setQuality(0,90);
+					Alert.show("麦克风连接失败！");
 				}
+				mic.removeEventListener(StatusEvent.STATUS,initMicrophone);
+			}
+			
+			private function initCamera(event:StatusEvent):void
+			{
+				if(event.code=="Camera.Unmuted")
+				{
+				
+				}
+				else
+				{
+					Alert.show("摄像头连接失败！");
+				}
+				cam.addEventListener(StatusEvent.STATUS,initCamera);
 			}
 			
 			private function startUpload():void
@@ -191,7 +212,7 @@
 			//开始下载
 			private function startDownloadFile(event:Event):void
 			{
-				downloadtext.text = "开始下载";
+//				downloadtext.text = "开始下载";
 			}
 			
 			//下载取消
@@ -355,7 +376,7 @@
 				switch(result)
 				{
 					case 0:
-						Alert.show("用户连接成功");
+//						Alert.show("用户连接成功");
 						localid = object.userid.toString();
 						connect();
 						break;
@@ -918,6 +939,41 @@
 				instream.soundTransform = speakerst;
 			}
 			
+			private function startViewText():void
+			{
+				currentState = "View";
+				textlog.text = "正在获取聊天记录，请稍后...";
+				service.getUserText.send(localid);
+			}
+			
+			private function getUserText_resultHandler(event:ResultEvent):void
+			{
+				var result:Array = event.message.body as Array;
+				//调用前清理friendlist防止多次插入
+				textlog.text = "";
+				for(var i:Number = 0; i < result.length; i++)
+				{	
+					textlog.appendText(result[i].date+"\n"+result[i].username+" : "+result[i].text+"\n");
+				}
+			}
+			
+			private function cancelViewText():void
+			{
+				currentState = "Talk";
+			}
+			
+			private function saveViewText():void
+			{
+				var textfile:FileReference = new FileReference();
+				textfile.addEventListener(Event.COMPLETE,completeSaveText);
+				var filename:String = localusername+"_log.txt";
+				textfile.save(textlog.text,filename);
+			}
+			
+			private function completeSaveText(event:Event):void
+			{
+				Alert.show("成功保存聊天记录");
+			}
 		]]>
 	</fx:Script>
 	<s:Panel title="P2P网络电话" left="10" right="10" top="10" bottom="20" borderVisible="true" fontFamily="微软雅黑">
@@ -963,13 +1019,17 @@
 		</s:Panel>
 		<s:Group id="_talk" includeIn="Talk,Setting,Upload,Download" width="100%"
 				 top="0" bottom="0" enabled.Setting="false" enabled.Upload="false" enabled.Download="false" height="100%" enabled.Talk="true">
-			<s:VGroup width="390" left="10" top="10" horizontalAlign="center"  gap="10" bottom="10">
-				<s:TextArea id="info" left="5" top="275" width="390" height="248" editable="false"
+			<s:VGroup left="10" width="390" gap="10" horizontalAlign="center" top="10" bottom="10">
+				<s:TextArea id="info" left="5" top="275" width="390" height="213" editable="false"
 							paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5"/>
 				<s:HGroup width="100%" left="5" top="65" verticalAlign="middle" gap="10" bottom="0">
-					<s:TextInput id="message" width="230" height="40" borderVisible="true" enter="sendMessage()"/>
-					<s:Button id="sendmessage" label="发送" click="sendMessage()" height="40"/>
-					<s:Button id="uploadfilebutton" label="传文件" click="startUpload()" height="40"/>
+					<s:Button id="uploadfilebutton" label="发送文件" click="startUpload()" width="70" height="25"/>
+					<s:Button id="viewtextbutton" label="聊天记录" click="startViewText()" width="70" height="25"/>
+				</s:HGroup>
+				<s:HGroup width="100%" left="5" top="65" verticalAlign="middle" gap="10" bottom="0">
+					<s:TextInput id="message" borderVisible="true" enter="sendMessage()" width="310" height="40"/>
+					<s:Button id="sendmessage" height="40" label="发送" click="sendMessage()"
+							  height.Talk="40"/>
 				</s:HGroup>
 			</s:VGroup>
 			<s:VGroup right="10" top="10" bottom="10" width="160" gap="14" horizontalAlign="center">
@@ -1036,5 +1096,16 @@
 			<s:Button right="30" bottom="15" width="80" height="25" label="取消" click="cancelDownload()"/>
 			<s:Button left="30" bottom="15" width="80" height="25" label="接收" click="startDownload()"/>
 		</s:Panel>
+		<s:HGroup id="_view" includeIn="View" left="0" right="0" top="0" bottom="0" gap="10"
+				  horizontalAlign="center" paddingBottom="10" paddingLeft="10" paddingRight="10"
+				  paddingTop="10" verticalAlign="middle">
+			<s:TextArea id="textlog" left="10" top="10" bottom="10" width="450" height="297"
+						paddingLeft="3" paddingTop="3"/>
+			<s:VGroup height="297" gap="20" horizontalAlign="center" paddingBottom="10"
+					  paddingLeft="10" paddingRight="10" paddingTop="10" verticalAlign="middle">
+				<s:Button x="493" y="63" width="75" height="30" label="保存" click="saveViewText()"/>
+				<s:Button right="10" top="10" width="75" height="30" label="关闭" click="cancelViewText()"/>
+			</s:VGroup>
+		</s:HGroup>
 	</s:Panel>
 </s:Application>

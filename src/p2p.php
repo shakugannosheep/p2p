@@ -176,7 +176,9 @@ class p2p
 		 *1 => 记录成功
 		 */
 		$db = new mysqli($_SERVER['HTTP_HOST'],'wangyang','19911016','p2p') or die("Database Connect Error");
-		$query = "insert into text (sourceid,targetid,text) values ('$sourceid','$targetid','$text')";
+		date_default_timezone_set('Asia/Shanghai');
+		$date = date("Y-m-d H:i:s");
+		$query = "insert into text (sourceid,targetid,text,date) values ('$sourceid','$targetid','$text','$date')";
 
 		return $db->query($query) ? 1 : 0;
 	}
@@ -273,5 +275,21 @@ class p2p
 		$query = "update file set status = '1' where id = '$id'";
 
 		$db->query($query) ? 1 : 0;
+	}
+
+	public function getUserText( $userid )
+	{
+		$db = new mysqli($_SERVER['HTTP_HOST'],'wangyang','19911016','p2p') or die("Database Connect Error");
+		$query = "select user.username,text.text,text.date from user,text where (text.sourceid = '$userid' and text.sourceid = user.id) or (text.sourceid = '$userid' and text.targetid = user.id) order by id desc";
+		$text = array();
+		if( $result = $db->query($query) )
+		{
+			//将数据库中的数据按条置入friendlist中
+			while($row = $result->fetch_assoc())
+			{
+				array_push($text,$row);
+			}
+		}
+		return $text;
 	}
 }
