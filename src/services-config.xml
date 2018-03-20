@@ -14,7 +14,7 @@
 	</services>
 	<channels>
 		<channel-definition id="amfphp" class="mx.messaging.channels.AMFChannel">
-			<endpoint uri="http://172.22.224.175/BackOffice/../Amfphp/index.php" class="flex.messaging.endpoints.AMFEndpoint"/>
+			<endpoint uri="http://XXX/BackOffice/../Amfphp/index.php" class="flex.messaging.endpoints.AMFEndpoint"/>
 		</channel-definition>
 	</channels>
 </services-config>
